@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # fetch-depth: 0 —— 公开信息门禁需要提交历史以扫描提交元数据
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -78,7 +78,7 @@ jobs:
     name: AI 代理契约测试（模拟网关）
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
@@ -98,7 +98,7 @@ jobs:
     name: 浏览器 E2E 关键流程
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
