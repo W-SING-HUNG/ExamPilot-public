@@ -1,11 +1,27 @@
 version: 2
+
+# Dependency automation policy
+#
+# Regular version updates are DISABLED on purpose. The public repository ships a
+# tested, pinned dependency set; automatic major/minor bumps would open upgrade
+# PRs faster than they can be reviewed and verified, and unreviewed dependency
+# changes are exactly what must not reach `main`.
+#
+# Dependency SECURITY updates remain enabled at the repository level
+# (Settings → Code security: Dependabot alerts + Dependabot security updates).
+# Security advisories must still reach this project; only routine version churn
+# is paused.
+#
+# To resume routine updates, set `open-pull-requests-limit` back to a positive
+# value (and restore the schedule semantics below).
 updates:
   - package-ecosystem: npm
     directory: '/'
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 5
+    # 0 = the ecosystem entry stays declared, but no version-update PRs open.
+    open-pull-requests-limit: 0
     labels:
       - dependencies
     commit-message:
@@ -15,6 +31,8 @@ updates:
     directory: '/'
     schedule:
       interval: monthly
+    # Same rationale: action version bumps are reviewed deliberately, not queued.
+    open-pull-requests-limit: 0
     labels:
       - dependencies
       - ci
