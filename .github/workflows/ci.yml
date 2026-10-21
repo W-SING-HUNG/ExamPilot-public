@@ -1,0 +1,176 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# 最小权限：只读内容，不写入、不暴露密钥
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    # NOTE: this job NAME is a required status check in main's branch protection.
+    # Renaming it would leave the required context unsatisfied and block merges.
+    # New checks must be added as STEPS inside this job, not by renaming it.
+    name: 类型检查 / Lint / 格式 / 单元测试 / 生产构建
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 —— 公开信息门禁需要提交历史以扫描提交元数据
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: 安装锁定版本依赖
+        run: npm ci
+
+      # 生成本地题库加载器：CI 无私人题库，将写入 null 加载器（公开示例题库模式）
+      - name: 生成题库加载器
+        run: npm run bank:local
+
+      - name: TypeScript 类型检查
+        run: npm run typecheck
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Prettier 格式检查
+        run: npm run format:check
+
+      # 公开信息门禁：凭据、本地路径、个人信息、内部记录与禁止提交的文件路径
+      # 见 docs/information-governance.md。
+      # 使用 HEAD（actions/checkout 已检出的提交）扫描**实际提交内容**，
+      # 而非工作区，避免暂存后修改工作区造成漏检；先回显 SHA 便于溯源核对。
+      - name: 公开信息合规检查
+        run: |
+          echo "inspecting commit: $(git rev-parse HEAD)"
+          node tools/public-info-check.mjs --commit HEAD
+
+      # 门禁自身的回归测试：证明检测有效且输出不含敏感原文
+      - name: 公开信息门禁测试
+        run: npm run test:public-info
+
+      # 交付产物校验器的回归测试：证明「构建产物里混入私人题库」会被拦下
+      - name: 发布产物校验测试
+        run: npm run test:release
+
+      - name: 单元测试（公开示例题库）
+        run: npm test
+
+      # 公开构建：显式写空加载器 → 构建 → 用正向交付清单校验产物。
+      # 单靠源码干净不够：src/lib/bank.ts 静态导入生成器，在有私人题库的机器上
+      # 构建会把私人题库打进 dist/。这一步检查的是产物本身。
+      - name: 生产构建（公开交付清单校验）
+        run: npm run build:public
+
+  ai-proxy:
+    name: AI 代理契约测试（模拟网关）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: 安装锁定版本依赖
+        run: npm ci
+
+      - name: 生成题库加载器（公开示例题库模式）
+        run: npm run bank:local
+
+      - name: AI 代理测试（契约 / 流式健壮性 / 安全）
+        run: npm run test:ai:all
+
+  browser-e2e:
+    name: 浏览器 E2E 关键流程
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: 安装锁定版本依赖
+        run: npm ci
+
+      - name: 生成题库加载器（公开示例题库模式）
+        run: npm run bank:local
+
+      - name: 安装 Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: 启动开发服务器
+        run: |
+          npm run dev > vite.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:5173/ > /dev/null; then echo "dev server ready"; exit 0; fi
+            sleep 1
+          done
+          echo "dev server failed to start"; cat vite.log; exit 1
+
+      # AI 代理未配置（无密钥），仅验证「未配置时网站仍可用」这一降级路径
+      - name: 启动 AI 代理（未配置状态）
+        run: |
+          npm run server > ai-proxy.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8787/api/ai/status > /dev/null; then echo "ai proxy ready"; exit 0; fi
+            sleep 1
+          done
+          echo "ai proxy failed to start"; cat ai-proxy.log; exit 1
+
+      # 两套浏览器 E2E。timeout-minutes 作为护栏：历史上该 Job 约 3 分钟完成，
+      # 若 runner 异常挂起（曾出现步骤 in_progress 超过 40 分钟、日志不可读的
+      # 情况），超时会强制终止并让失败诊断步骤输出 vite / ai-proxy 日志，
+      # 而不是无限占用并阻塞 PR 的必需检查。
+      - name: 浏览器 E2E（公开示例题库）
+        timeout-minutes: 15
+        run: npm run test:browser
+        env:
+          E2E_BASE: http://localhost:5173
+          CHROME_PATH: /usr/bin/google-chrome-stable
+
+      # 阶段 2 复习策略的端到端行为验证：状态机恢复、计划配额、诊断分类、
+      # 主观题不显示正确率、到期积压顺延提示。
+      - name: 浏览器 E2E（阶段 2 复习策略行为）
+        timeout-minutes: 15
+        run: npm run test:browser:phase2
+        env:
+          E2E_BASE: http://localhost:5173
+          CHROME_PATH: /usr/bin/google-chrome-stable
+
+      # 阶段 3 的界面回归：五个断点下的溢出与可达性、移动端导航、键盘与跳转
+      # 链接、动效层与 prefers-reduced-motion、真实分页与筛选重置、AI 请求取消、
+      # 空状态与危险操作对话框。
+      - name: 浏览器 E2E（阶段 3 界面与交互）
+        timeout-minutes: 15
+        run: npm run test:browser:phase3
+        env:
+          E2E_BASE: http://localhost:5173
+          CHROME_PATH: /usr/bin/google-chrome-stable
+
+      - name: 失败时上传诊断日志
+        if: failure()
+        run: |
+          echo "----- vite.log -----"
+          cat vite.log 2>/dev/null || true
+          echo "----- ai-proxy.log -----"
+          cat ai-proxy.log 2>/dev/null || true
+          echo "----- dev server probe -----"
+          curl -sS -o /dev/null -w "%{http_code}\n" http://localhost:5173/ || true

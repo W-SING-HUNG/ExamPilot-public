@@ -1,0 +1,102 @@
+# ---- Private course bank (NEVER commit) ----
+data/bank.json
+data/local-bank.json
+src/lib/local-bank.generated.ts
+
+# Derived full-bank artifacts (extracted text, parse output) — same restriction as the PDF
+tools/pdf_text.txt
+tools/parse_out.txt
+
+# ---- Original source PDF (no redistribution license) ----
+*.pdf
+
+# ---- AI gateway secrets ----
+server/ai-config.json
+.env
+.env.*
+!.env.example
+
+# ---- Local learning data / backups ----
+*.exampilot-backup.json
+exampilot-history-*.csv
+exampilot-bank.json
+
+# ---- Dependencies ----
+node_modules/
+
+# ---- Build output ----
+dist/
+dist-ssr/
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# ---- Logs ----
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- Editor / OS ----
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# ---- Test / coverage artifacts ----
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# ---- Local scratch ----
+tools/.gh_token
+tools/staged.txt
+scratch/
+tools/commit-msg*.txt
+
+# ---- transient CI/API artifacts ----
+tools/*.json
+tools/ci-job-*.log
+
+# ---- Local-only tooling (needs the private course bank or a GitHub token) ----
+# These are release/audit helpers used by the maintainer; they are not part of
+# the public contribution workflow and would fail in a clean checkout.
+tools/list-jobs.mjs
+tools/gh-api.mjs
+tools/push-via-api.mjs
+tools/ci-logs.mjs
+tools/ci-status.mjs
+tools/ci-steps.mjs
+tools/ci-runs.mjs
+tools/ci-rerun.mjs
+tools/ci-report.mjs
+tools/create-pr.mjs
+tools/pr-update.mjs
+tools/pr-reviews.mjs
+tools/secret-scan.mjs
+tools/verify-remote.mjs
+tools/history-scan.mjs
+tools/check-bank.mjs
+tools/bump-version.mjs
+tools/licence-audit.mjs
+tools/analyze-originality.mjs
+tools/classify-originality.mjs
+tools/verify-sample-originality.mjs
+
+# ---- commit message scratch ----
+.commitmsg
+.commit-msg.tmp
+commit-msg.tmp
+msg1.txt
+msg2.txt
+commit-msg.txt
+
+# ---- Python caches (local parse tooling) ----
+__pycache__/
+*.pyc
+
+# ---- E2E upload scratch ----
+tools/.e2e-uploads/
