@@ -247,20 +247,68 @@ export function correctRateOfRecords(recs: QRecord[]): number {
   return recs.reduce((s, r) => s + r.correctCount, 0) / tt
 }
 
-/** Recent study activity per day */
+/**
+ * Local calendar-day boundaries.
+ *
+ * Returns the local-midnight start of the day containing `ts`. Using
+ * `setHours(0,0,0,0)` keeps this on the user's wall clock, so a record made at
+ * 00:30 on Oct 22 belongs to Oct 22 — not to Oct 21 (a rolling 24h window would
+ * put it there) and not to Oct 21 in UTC (a UTC label would).
+ */
+export function startOfLocalDay(ts: number): number {
+  const d = new Date(ts)
+  d.setHours(0, 0, 0, 0)
+  return d.getTime()
+}
+
+/**
+ * Local calendar day label, `YYYY-MM-DD`.
+ *
+ * Built from local getters, NOT `toISOString()` — the ISO form is UTC, so for
+ * UTC+8 a record at local 00:30 Oct 22 would be labelled "2026-10-21".
+ */
+export function localDayLabel(ts: number): string {
+  const d = new Date(ts)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+/**
+ * Recent study activity, grouped by LOCAL CALENDAR DAY.
+ *
+ * `days` buckets ending with today. Each bucket spans one local calendar day,
+ * so bucket boundaries align with what the user calls "a day" and "today" is the
+ * final bucket — which is what the home page's 今日已答 reads.
+ *
+ * The previous implementation used a rolling `now - d*86400000` window with a
+ * UTC date label. That had two defects: the final bucket started at `now`, so
+ * "today" was always empty; and records from local 00:00–08:00 (UTC+8) landed in
+ * the previous UTC day. Both are fixed by grouping on local midnights.
+ */
 export function groupActivity(
   history: HistoryEntry[],
   days = 14,
+  now: number = Date.now(),
 ): { date: string; count: number; correct: number; wrong: number }[] {
   const out: { date: string; count: number; correct: number; wrong: number }[] = []
-  const now = Date.now()
+  const todayStart = startOfLocalDay(now)
+
   for (let d = days - 1; d >= 0; d--) {
-    const start = now - d * 86400000
-    const end = start + 86400000
-    const day = new Date(start).toISOString().slice(0, 10)
+    // Step back by calendar day (via setDate) rather than by a fixed 86400000 ms,
+    // so DST transitions (23h / 25h days) keep landing on real local midnights.
+    const startDate = new Date(todayStart)
+    startDate.setDate(startDate.getDate() - d)
+    const start = startDate.getTime()
+    // End = the NEXT local midnight, computed the same way (handles 23/25h days).
+    const endDate = new Date(start)
+    endDate.setDate(endDate.getDate() + 1)
+    const end = endDate.getTime()
+
     const cnt = history.filter((h) => h.submittedAt >= start && h.submittedAt < end)
     out.push({
-      date: day,
+      date: localDayLabel(start),
       count: cnt.length,
       correct: cnt.filter((h) => h.isCorrect === true).length,
       wrong: cnt.filter((h) => h.isCorrect === false).length,

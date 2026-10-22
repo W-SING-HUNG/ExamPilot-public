@@ -21,6 +21,7 @@
     "test:browser:phase3": "node tests/phase3-ui.test.mjs",
     "test:public-info": "node tests/public-info-check.test.mjs",
     "test:release": "node tests/verify-release.test.mjs",
+    "test:ui-guards": "node tests/ui-source-guards.test.mjs",
     "test:all": "vitest run && node tests/ai-proxy.test.mjs && node tests/ai-stream.test.mjs && node tests/ai-security.test.mjs && node tests/browser.test.mjs",
     "typecheck": "npm run bank:ensure && tsc -b --noEmit",
     "lint": "eslint .",
@@ -34,7 +35,8 @@
     "parse:bank": "py -X utf8 tools/parse_bank.py",
     "bank:local": "node tools/bank-local.mjs",
     "bank:ensure": "node tools/bank-local.mjs --ensure",
-    "bank:public": "node tools/bank-local.mjs --public"
+    "bank:public": "node tools/bank-local.mjs --public",
+    "test:ui-verify": "node tests/workbuddy-verify.mjs && node tests/import-preview-verify.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.8",

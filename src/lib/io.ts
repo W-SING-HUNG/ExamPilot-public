@@ -534,17 +534,51 @@ export interface ImportPlan {
   settingsAction: 'keep' | 'set' | 'reset'
   /** Which rows were excluded because their question is absent from the bank. */
   filter: BankFilterReport
+  /**
+   * The backup rows that survived bank filtering — i.e. what the backup actually
+   * contributes, BEFORE merging with existing data.
+   *
+   * This is separate from `records`/`history`/… on purpose. In merge mode those
+   * fields hold the MERGED result (existing ∪ incoming), so using them to compute
+   * "how much of this backup is new" compares the merge against the existing set
+   * and reports every pre-existing row as overwritten. The preview must describe
+   * the BACKUP's contribution, and only this field can answer that.
+   */
+  incoming: IncomingRows
+}
+
+/** The backup's own rows, after bank filtering and before any merging. */
+export interface IncomingRows {
+  records: QRecord[]
+  history: HistoryEntry[]
+  mocks: MockRun[]
+  aiReviews: AiReview[]
 }
 
 /** Row-level difference between the backup and the current database. */
 export interface ImportDiff {
-  records: { incoming: number; existing: number; added: number; updated: number }
-  history: { incoming: number; existing: number; added: number; updated: number }
-  mocks: { incoming: number; existing: number; added: number; updated: number }
-  aiReviews: { incoming: number; existing: number; added: number; updated: number }
+  /**
+   * `incoming` = rows this backup contributes (post-filter, pre-merge).
+   * `existing` = rows currently in the database.
+   * `added`    = incoming rows whose key is not present locally.
+   * `updated`  = incoming rows whose key already exists (backup wins).
+   * `total`    = rows after restore under the chosen mode.
+   */
+  records: RowDiff
+  history: RowDiff
+  mocks: RowDiff
+  aiReviews: RowDiff
   settingsChanged: boolean
   /** existing rows that would be destroyed in replace mode */
   clearedInReplace: number
+}
+
+export interface RowDiff {
+  incoming: number
+  existing: number
+  added: number
+  updated: number
+  total: number
 }
 
 export interface ExistingData {
@@ -703,6 +737,15 @@ export function planImport(
   const incomingMocks = verified.mocks ?? []
   const incomingAi = verified.aiReviews ?? []
 
+  // The backup's own contribution, captured before merging so the preview can
+  // report "new / overwritten" against what the BACKUP contains.
+  const incoming: IncomingRows = {
+    records: incomingRecords,
+    history: incomingHistory,
+    mocks: incomingMocks,
+    aiReviews: incomingAi,
+  }
+
   const issues: ValidationIssue[] = []
   const settings = validateSettings(payload.settings, 'settings', issues)
   const settingsUsable = issues.length === 0 && settings !== null
@@ -718,6 +761,7 @@ export function planImport(
       settings: settingsUsable ? settings : null,
       settingsAction: action,
       filter: report,
+      incoming,
     }
   }
 
@@ -741,6 +785,7 @@ export function planImport(
     settings: settingsUsable ? settings : null,
     settingsAction: action,
     filter: report,
+    incoming,
   }
 }
 
@@ -763,8 +808,13 @@ function emptyFilterReport(fingerprintMatch: boolean = false): BankFilterReport 
 /**
  * Row-level diff used by the confirmation UI.
  *
- * Takes the already-filtered `ImportPlan`, so the numbers shown to the user are
- * exactly the rows that will be written (never the raw backup size).
+ * `incoming` counts come from `plan.incoming` (the filtered BACKUP rows), not
+ * from `plan.records`. In merge mode `plan.records` is the merged result, so
+ * diffing it against the current database would count every pre-existing row as
+ * overwritten: a backup with 1 new row against 11 existing rows would be
+ * reported as "12 backup rows, 11 overwritten" instead of "1 new, 0 overwritten".
+ * The preview must describe what the backup contributes, so the comparison is
+ * backup-vs-current.
  */
 export function diffImport(plan: ImportPlan, mode: RestoreMode, existing: ExistingData): ImportDiff {
   const stat = <T>(incoming: T[], current: T[], key: (x: T) => string) => {
@@ -776,7 +826,9 @@ export function diffImport(plan: ImportPlan, mode: RestoreMode, existing: Existi
       if (cur.has(k)) updated++
       else added++
     }
-    return { incoming: incoming.length, existing: current.length, added, updated }
+    // Rows after restore: replace discards the current set, merge unions them.
+    const total = mode === 'replace' ? inc.size : new Set([...cur, ...inc]).size
+    return { incoming: inc.size, existing: cur.size, added, updated, total }
   }
 
   const incomingSettings = plan.settings
@@ -791,10 +843,10 @@ export function diffImport(plan: ImportPlan, mode: RestoreMode, existing: Existi
       : 0
 
   return {
-    records: stat(plan.records, existing.records, (r) => r.qid),
-    history: stat(plan.history, existing.history, (h) => h.id),
-    mocks: stat(plan.mocks, existing.mocks, (m) => m.id),
-    aiReviews: stat(plan.aiReviews, existing.aiReviews, (a) => a.id),
+    records: stat(plan.incoming.records, existing.records, (r) => r.qid),
+    history: stat(plan.incoming.history, existing.history, (h) => h.id),
+    mocks: stat(plan.incoming.mocks, existing.mocks, (m) => m.id),
+    aiReviews: stat(plan.incoming.aiReviews, existing.aiReviews, (a) => a.id),
     settingsChanged,
     clearedInReplace,
   }

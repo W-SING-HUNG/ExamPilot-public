@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../store/StoreContext'
 import { allQuestions, chapterOrder, TYPE_LABEL } from '../lib/bank'
 import { buildPaper } from '../lib/scheduler'
+import { displayUserAnswer, displayCorrectAnswer } from '../lib/answer-display'
 import { CardPad, PageHead, Tag, Empty, Bar, useToast, useConfirm } from '../components/ui'
 import { QuestionCard } from '../components/QuestionCard'
 import { AiGradePanel } from '../components/AiQaPanel'
@@ -19,6 +20,65 @@ const DEFAULT_CONFIG: MockConfig = {
   shortScore: 15,
   durationMin: 90,
   chapters: 'all',
+}
+
+/**
+ * Fit a configuration to what the installed bank can actually supply.
+ *
+ * The shipped defaults describe a full-size final exam (20/10/10/1), which the
+ * 17-question public sample bank cannot satisfy — so a first-time user of the
+ * public build could not start ANY mock exam. Rather than shrinking the paper
+ * silently (that would misrepresent the exam rules), this returns an explicitly
+ * reduced config that is still a real, complete paper over the available
+ * questions, letting the defaults be usable out of the box.
+ *
+ * Rules:
+ *  - never invent questions or repeat one (counts are capped to what exists);
+ *  - never raise a count above the user's intent;
+ *  - a type the bank cannot supply at all is left at 0 rather than blocking the
+ *    whole paper, so one missing type does not make the feature unreachable.
+ * Callers must only use this when there is NO saved user configuration.
+ */
+function fitConfigToBank(all: Question[], base: MockConfig): { config: MockConfig; reduced: boolean } {
+  const byType = (t: Question['type']) => all.filter((q) => q.type === t).length
+  const subjective = all.filter((q) => q.type === 'short' || q.type === 'material').length
+
+  const cap = (want: number, have: number) => Math.max(0, Math.min(want, have))
+
+  const next: MockConfig = {
+    ...base,
+    singleCount: cap(base.singleCount, byType('single')),
+    multiCount: cap(base.multiCount, byType('multi')),
+    judgeCount: cap(base.judgeCount, byType('judge')),
+    shortCount: cap(base.shortCount, subjective),
+  }
+  const reduced =
+    next.singleCount !== base.singleCount ||
+    next.multiCount !== base.multiCount ||
+    next.judgeCount !== base.judgeCount ||
+    next.shortCount !== base.shortCount
+
+  // Guarantee at least one question overall so "start" can never produce an
+  // empty paper; prefer an objective question when one exists.
+  if (next.singleCount + next.multiCount + next.judgeCount + next.shortCount === 0 && all.length > 0) {
+    const firstObjective = all.find((q) => q.type === 'single' || q.type === 'multi' || q.type === 'judge')
+    if (firstObjective) {
+      if (firstObjective.type === 'single') next.singleCount = 1
+      else if (firstObjective.type === 'multi') next.multiCount = 1
+      else next.judgeCount = 1
+    }
+  }
+
+  // Keep the score total honest for a reduced paper: scale the duration down so
+  // the timer still reflects a realistic pace instead of 90 minutes for 15 items.
+  const total = next.singleCount + next.multiCount + next.judgeCount + next.shortCount
+  const baseTotal = base.singleCount + base.multiCount + base.judgeCount + base.shortCount
+  if (reduced && baseTotal > 0 && total > 0) {
+    const scaled = Math.round((base.durationMin * total) / baseTotal)
+    next.durationMin = Math.max(5, Math.min(base.durationMin, scaled))
+  }
+
+  return { config: next, reduced }
 }
 
 type Phase = 'config' | 'running' | 'done'
@@ -79,6 +139,12 @@ function saveConfig(c: MockConfig): void {
   }
 }
 
+/**
+ * Answer display for the review screen lives in `lib/answer-display.ts` so it is
+ * unit-testable without React. Re-exported here for call-site convenience.
+ */
+export { displayUserAnswer, displayCorrectAnswer } from '../lib/answer-display'
+
 export function MockExam({
   nav,
 }: {
@@ -89,7 +155,23 @@ export function MockExam({
   // A saved configuration means "start immediately"; an unsaved one means the
   // first run needs configuring.
   const [savedConfig, setSavedConfig] = useState<MockConfig | null>(() => loadSavedConfig())
-  const [config, setConfig] = useState<MockConfig>(() => loadSavedConfig() ?? DEFAULT_CONFIG)
+  /*
+   * Initial config.
+   *
+   * With a saved config, honour it EXACTLY — the user's exam rules are theirs.
+   * With no saved config, fit the shipped full-exam defaults to the installed
+   * bank so a first-time user (notably on the 17-question public sample bank)
+   * can start a real, valid paper instead of hitting "题库数量不足".
+   */
+  const [config, setConfig] = useState<MockConfig>(() => {
+    const saved = loadSavedConfig()
+    if (saved) return saved
+    return fitConfigToBank(allQuestions, DEFAULT_CONFIG).config
+  })
+  const [defaultsWereReduced] = useState<boolean>(() => {
+    if (loadSavedConfig()) return false
+    return fitConfigToBank(allQuestions, DEFAULT_CONFIG).reduced
+  })
   /*
    * The page opens as a simple "start" card, even on first visit.
    *
@@ -291,8 +373,13 @@ export function MockExam({
                 <div className="muted-2" style={{ marginTop: 4 }}>
                   {savedConfig
                     ? `单选 ${savedConfig.singleCount} · 多选 ${savedConfig.multiCount} · 判断 ${savedConfig.judgeCount} · 主观 ${savedConfig.shortCount} · ${savedConfig.durationMin} 分钟`
-                    : '当前为模板默认值。等你得知正式考试要求后，点右侧「设置考试规则」填一次，之后直接开始即可。'}
+                    : `单选 ${config.singleCount} · 多选 ${config.multiCount} · 判断 ${config.judgeCount} · 主观 ${config.shortCount} · ${config.durationMin} 分钟（当前为模板默认值，可直接开始；等你得知正式考试要求后，点右侧「设置考试规则」填一次，之后直接开始即可）`}
                 </div>
+                {!savedConfig && defaultsWereReduced && (
+                  <div className="muted-2" style={{ marginTop: 4, color: 'var(--warn)' }}>
+                    已按当前题库实际题量调整默认配置（题库不足以出具完整规模试卷）。这是可用的默认值，不代表真实考纲；正式考试要求明确后请自行设置。
+                  </div>
+                )}
               </div>
               <button className="btn btn-sm" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
                 {editing ? '收起规则设置' : '设置考试规则'}
@@ -616,11 +703,12 @@ export function MockExam({
                       {qq.stem}
                     </div>
                     <div className="muted" style={{ marginTop: 6 }}>
-                      你的作答：{mine || '（未作答）'}
+                      你的作答：
+                      <b>{displayUserAnswer(qq.type, mine)}</b>
                       {!isSub && (
                         <span style={{ marginLeft: 8 }}>
                           正确答案：
-                          <b>{qq.answerNorm === true ? '正确' : qq.answerNorm === false ? '错误' : qq.answerNorm}</b>
+                          <b>{displayCorrectAnswer(qq.answerNorm)}</b>
                         </span>
                       )}
                     </div>

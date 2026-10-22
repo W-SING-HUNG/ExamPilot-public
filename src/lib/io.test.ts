@@ -437,6 +437,156 @@ describe('io / diffImport', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Regression: the merge-mode preview reported the MERGED total as "backup"
+//
+// Reported by an independent tester: 11 existing records + a backup containing
+// exactly 1 new record was previewed as "备份 12 / 覆盖 11". Root cause: in merge
+// mode `plan.records` is the UNION (existing ∪ incoming), and `diffImport`
+// diffed that union against the existing set — so every pre-existing row looked
+// like it was being overwritten, and the backup looked like it contained them.
+//
+// The preview must describe what the BACKUP contributes: 1 new, 0 overwritten,
+// 12 after restore. These tests fail against the old implementation.
+// ---------------------------------------------------------------------------
+
+describe('io / diffImport — merge preview counts the BACKUP, not the merged set', () => {
+  /** 11 existing learning records, one per question q1..q11. */
+  const existing11 = {
+    records: Array.from({ length: 11 }, (_, i) => mkre(`q${i + 1}`, 1)),
+    history: [] as ReturnType<typeof mkhist>[],
+    mocks: [],
+    aiReviews: [],
+    settings: SETTINGS,
+  }
+
+  it('11 existing + backup with 1 new row => backup 1, existing 11, added 1, updated 0, total 12', () => {
+    const p = payload({ records: [mkre('q99', 1)] })
+    const plan = planImport(p, 'merge', existing11)
+    const d = diffImport(plan, 'merge', existing11)
+
+    expect(d.records.incoming, '备份中').toBe(1)
+    expect(d.records.existing, '现有').toBe(11)
+    expect(d.records.added, '新增').toBe(1)
+    expect(d.records.updated, '覆盖').toBe(0)
+    expect(d.records.total, '恢复后').toBe(12)
+  })
+
+  it('the merged plan really does contain 12 rows (so the preview and the write agree)', () => {
+    const p = payload({ records: [mkre('q99', 1)] })
+    const plan = planImport(p, 'merge', existing11)
+    // The DB row set after restore — this is what `total` must equal.
+    expect(plan.records).toHaveLength(12)
+    expect(diffImport(plan, 'merge', existing11).records.total).toBe(plan.records.length)
+  })
+
+  it('a backup row whose id already exists counts as overwritten, not added', () => {
+    const p = payload({ records: [mkre('q1', 5)] }) // q1 already present
+    const d = diffImport(planImport(p, 'merge', existing11), 'merge', existing11)
+    expect(d.records.incoming).toBe(1)
+    expect(d.records.added).toBe(0)
+    expect(d.records.updated).toBe(1)
+    expect(d.records.total).toBe(11) // union: 11 unique rows
+    expect(d.clearedInReplace).toBe(0) // merge never destroys
+  })
+
+  it('mixed backup: same-id rows are updated, new-id rows are added', () => {
+    const p = payload({ records: [mkre('q1', 5), mkre('q2', 5), mkre('q98', 1), mkre('q99', 1)] })
+    const d = diffImport(planImport(p, 'merge', existing11), 'merge', existing11)
+    expect(d.records.incoming).toBe(4)
+    expect(d.records.updated).toBe(2)
+    expect(d.records.added).toBe(2)
+    expect(d.records.total).toBe(13)
+  })
+
+  it('an empty backup adds nothing and overwrites nothing', () => {
+    const p = payload({ records: [], history: [], mocks: [], aiReviews: [] })
+    const d = diffImport(planImport(p, 'merge', existing11), 'merge', existing11)
+    expect(d.records.incoming).toBe(0)
+    expect(d.records.added).toBe(0)
+    expect(d.records.updated).toBe(0)
+    expect(d.records.existing).toBe(11)
+    expect(d.records.total).toBe(11)
+  })
+
+  it('replace mode reports the backup count as the post-restore total, not a union', () => {
+    const p = payload({ records: [mkre('q99', 1)] })
+    const d = diffImport(planImport(p, 'replace', existing11), 'replace', existing11)
+    expect(d.records.incoming).toBe(1)
+    expect(d.records.existing).toBe(11)
+    expect(d.records.added).toBe(1)
+    expect(d.records.updated).toBe(0)
+    // Replace discards the 11 existing rows.
+    expect(d.records.total).toBe(1)
+    expect(d.clearedInReplace).toBe(11)
+  })
+
+  it('applies the same backup-vs-current rule to history, mocks and aiReviews', () => {
+    const existing = {
+      records: [mkre('q1', 1)],
+      history: [mkhist('h1', 'q1'), mkhist('h2', 'q1')],
+      mocks: [] as never[],
+      aiReviews: [] as never[],
+      settings: SETTINGS,
+    }
+    const p = payload({
+      records: [mkre('q9', 1)],
+      history: [mkhist('h1', 'q1'), mkhist('h3', 'q1')],
+    })
+    const d = diffImport(planImport(p, 'merge', existing), 'merge', existing)
+
+    // history: h1 exists (updated), h3 is new (added)
+    expect(d.history.incoming).toBe(2)
+    expect(d.history.existing).toBe(2)
+    expect(d.history.updated).toBe(1)
+    expect(d.history.added).toBe(1)
+    expect(d.history.total).toBe(3)
+
+    // records: 1 new out of 1
+    expect(d.records.incoming).toBe(1)
+    expect(d.records.added).toBe(1)
+    expect(d.records.updated).toBe(0)
+    expect(d.records.total).toBe(2)
+  })
+
+  it('cross-bank exclusion is reflected in the preview numbers', () => {
+    const existing1 = {
+      records: [mkre('q1', 1)],
+      history: [] as ReturnType<typeof mkhist>[],
+      mocks: [],
+      aiReviews: [],
+      settings: SETTINGS,
+    }
+    // Backup carries 3 rows; only q1 overlaps the current bank.
+    const p = payload({ records: [mkre('q1', 2), mkre('otherA', 1), mkre('otherB', 1)] })
+
+    // Case A — fingerprint MATCHES: rows whose qid is in the bank are verifiable,
+    // the rest are excluded.
+    const planMatch = planImport(p, 'merge', existing1, new Set(['q1']), true)
+    const dMatch = diffImport(planMatch, 'merge', existing1)
+    expect(dMatch.records.incoming, 'only the verifiable row is counted').toBe(1)
+    expect(planMatch.filter.excludedRecords).toBe(2)
+    // 备份中 = kept + excluded = everything the file carried.
+    expect(dMatch.records.incoming + planMatch.filter.excludedRecords).toBe(3)
+    expect(dMatch.records.updated).toBe(1)
+    expect(dMatch.records.added).toBe(0)
+    expect(dMatch.records.total).toBe(1)
+
+    // Case B — fingerprint MISMATCH: no cross-bank progress may migrate, so the
+    // preview must show 0 incoming even though the file holds 3 rows.
+    const planMismatch = planImport(p, 'merge', existing1, new Set(['q1']), false)
+    const dMismatch = diffImport(planMismatch, 'merge', existing1)
+    expect(dMismatch.records.incoming, 'nothing verifiable across banks').toBe(0)
+    expect(planMismatch.filter.excludedRecords).toBe(3)
+    expect(dMismatch.records.existing).toBe(1)
+    expect(dMismatch.records.added).toBe(0)
+    expect(dMismatch.records.updated).toBe(0)
+    // Existing data is untouched by an all-excluded backup.
+    expect(dMismatch.records.total).toBe(1)
+    expect(planMismatch.filter.nothingVerifiable).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Cross-bank safety: unverifiable progress must never reach the statistics
 // ---------------------------------------------------------------------------
 

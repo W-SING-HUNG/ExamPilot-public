@@ -17,6 +17,20 @@ import type { Question, QuestionType } from '../lib/types'
 const PAGE_SIZE = 40
 
 /**
+ * One-line summary of a stem, for the collapsed row.
+ *
+ * Material questions store several lines (材料一 / 材料二 / 问题：…). The summary
+ * keeps the shape of the content readable while the row stays compact; the full
+ * text with all line breaks is shown when the row is expanded.
+ */
+function firstLineSummary(stem: string): string {
+  const first = (stem.split('\n')[0] ?? '').trim()
+  const hasMore = stem.includes('\n')
+  if (!hasMore) return first
+  return first.length > 0 ? `${first} …` : '（多段材料，展开查看完整题干）'
+}
+
+/**
  * 题库查阅 — read-only bank browser.
  *
  * Deliberately has NO store access and no submit path: browsing can never write
@@ -178,8 +192,24 @@ function BankRow({ q, open, onToggle }: { q: Question; open: boolean; onToggle: 
         </span>
         <span className="muted-2">{open ? '收起' : '展开'}</span>
       </button>
-      <div className="q-stem" style={{ fontSize: 14.5, marginTop: 6 }}>
-        {q.stem.split('\n')[0]}
+      {/*
+        Stem display.
+        Collapsed: a single-line summary is fine (the list stays scannable).
+        Expanded : the FULL stem must be shown, preserving newlines — material
+        questions carry 「材料一 / 材料二 / 问题」 on separate lines, and slicing
+        to the first line dropped the material and the actual question.
+        `whiteSpace: pre-wrap` renders the stored line breaks without altering
+        the content itself.
+      */}
+      <div
+        className="q-stem"
+        style={
+          open
+            ? { fontSize: 14.5, marginTop: 6, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
+            : { fontSize: 14.5, marginTop: 6 }
+        }
+      >
+        {open ? q.stem : firstLineSummary(q.stem)}
       </div>
       {open && (
         <div style={{ marginTop: 10 }}>

@@ -358,12 +358,15 @@ export function DataIOCard() {
                 ).map(([label, d, excluded]) => (
                   <tr key={label}>
                     <td>{label}</td>
+                    {/* 备份中 = every row the file carried (kept + excluded) */}
                     <td>{d.incoming + excluded}</td>
+                    {/* 可验证 = rows that survive bank filtering — what will be written */}
                     <td>{d.incoming}</td>
                     <td>{d.existing}</td>
                     <td>{d.added}</td>
                     <td>{d.updated}</td>
-                    <td>{mode === 'replace' ? d.incoming : d.existing + d.added}</td>
+                    {/* 恢复后 = replace keeps only the backup; merge unions both */}
+                    <td>{d.total}</td>
                   </tr>
                 ))}
               </tbody>
