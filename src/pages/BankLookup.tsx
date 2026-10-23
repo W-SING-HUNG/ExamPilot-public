@@ -57,7 +57,7 @@ export function BankLookup() {
   }, [chapter, type, kw, onlyFlagged])
 
   // Pagination pages over the filtered array rather than hiding rows: only the
-  // visible window is mounted, so a 1000-question bank stays responsive on a
+  // visible window is mounted, so large question banks stay responsive on a
   // phone. The query key resets the list whenever a filter changes.
   const queryKey = `${chapter}|${type}|${kw.trim()}|${onlyFlagged}`
   const load = useCallback(
