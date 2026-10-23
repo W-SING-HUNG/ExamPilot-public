@@ -632,40 +632,87 @@ test('browser E2E', async (t) => {
     await ctx.close()
   })
 
-  await t.test('dark theme toggle applies', async () => {
-    const { p, ctx } = await freshPage()
+  await t.test('theme changes immediately, auto tracks system, and selection persists', async () => {
+    const { p, ctx, errors } = await freshPage()
+    await p.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'dark' }])
     await nav(p, 'settings')
     await p.waitForSelector('.page-title')
-    // 主题按钮只更新草稿，必须点击「保存设置」后才会应用到 DOM
-    await p.evaluate(() => {
-      const btns = Array.from(document.querySelectorAll('.btn.btn-sm'))
-      btns.find((b) => b.textContent.includes('深色'))?.click()
-    })
-    await new Promise((r) => setTimeout(r, 200))
-    await p.evaluate(() => {
-      const save = Array.from(document.querySelectorAll('.btn.btn-primary')).find((b) =>
-        b.textContent.includes('保存设置'),
+
+    // Clicking an appearance choice must apply AND persist without the unrelated
+    // review-interval "保存设置" button. Verify rendered colours as well as data-theme.
+    const selectTheme = async (label, expectedResolved, expectedSaved) => {
+      const clicked = await p.evaluate((wanted) => {
+        const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === wanted)
+        if (!btn) return false
+        btn.click()
+        return true
+      }, label)
+      assert.ok(clicked, `theme choice exists: ${label}`)
+      await p.waitForFunction(
+        ({ theme, wanted }) => {
+          const selected = Array.from(document.querySelectorAll('button')).find(
+            (btn) => btn.textContent?.trim() === wanted,
+          )
+          return document.documentElement.dataset.theme === theme && selected?.getAttribute('aria-pressed') === 'true'
+        },
+        {},
+        { theme: expectedResolved, wanted: label },
       )
-      save?.click()
-    })
-    await new Promise((r) => setTimeout(r, 500))
-    const theme = await p.evaluate(() => document.documentElement.dataset.theme)
-    if (theme !== 'dark') {
-      const btns = await p.evaluate(() =>
-        Array.from(document.querySelectorAll('.btn.btn-sm'))
-          .map((b) => b.textContent)
-          .join(','),
-      )
-      console.log('THEME DEBUG: dataset.theme =', theme, '| buttons:', btns)
+      const result = await p.evaluate(async (wanted) => {
+        const { db } = await import('/src/db/database.ts')
+        const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === wanted)
+        return {
+          selected: btn?.getAttribute('aria-pressed'),
+          saved: (await db.settings.get('main'))?.theme,
+          bg: getComputedStyle(document.body).backgroundColor,
+        }
+      }, label)
+      assert.equal(result.selected, 'true', `${label} is selected in UI`)
+      assert.equal(result.saved, expectedSaved, `${label} persisted to IndexedDB`)
+      return result.bg
     }
-    assert.equal(theme, 'dark')
-    const bg = await p.evaluate(() => getComputedStyle(document.body).backgroundColor)
-    assert.notEqual(bg, 'rgb(246, 247, 249)')
-    // 主题偏好必须持久化：刷新后仍是深色
+
+    const darkBg = await selectTheme('深色', 'dark', 'dark')
+    const lightBg = await selectTheme('浅色', 'light', 'light')
+    assert.notEqual(lightBg, darkBg, 'actual background colour changes immediately')
+
+    // Saving review interval must never overwrite the already-applied appearance.
+    await p.evaluate(() => {
+      const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === '保存设置')
+      btn?.click()
+    })
+    await p.waitForFunction(() => {
+      const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === '浅色')
+      return document.documentElement.dataset.theme === 'light' && btn?.getAttribute('aria-pressed') === 'true'
+    })
+    assert.equal(
+      await p.evaluate(async () => {
+        const { db } = await import('/src/db/database.ts')
+        return (await db.settings.get('main'))?.theme
+      }),
+      'light',
+      'saving review settings never restores the old theme',
+    )
+
+    await selectTheme('跟随系统', 'dark', 'auto')
+    await p.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }])
+    await p.waitForFunction(() => document.documentElement.dataset.theme === 'light')
+    await p.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'dark' }])
+    await p.waitForFunction(() => document.documentElement.dataset.theme === 'dark')
+
     await p.reload({ waitUntil: 'networkidle2' })
     await p.waitForSelector('.app-shell', { timeout: 20000 })
-    const themeAfterReload = await p.evaluate(() => document.documentElement.dataset.theme)
-    assert.equal(themeAfterReload, 'dark', 'theme preference persists across reload')
+    assert.equal(await p.evaluate(() => document.documentElement.dataset.theme), 'dark', 'auto mode survives reload')
+    await nav(p, 'settings')
+    assert.equal(
+      await p.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === '跟随系统')
+        return btn?.getAttribute('aria-pressed')
+      }),
+      'true',
+      'auto preference still selected after reload',
+    )
+    assert.deepEqual(errors, [], 'theme interaction has no page errors')
     await ctx.close()
   })
 
