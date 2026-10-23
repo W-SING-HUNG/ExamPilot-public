@@ -648,10 +648,16 @@ test('browser E2E', async (t) => {
         return true
       }, label)
       assert.ok(clicked, `theme choice exists: ${label}`)
-      await p.waitForFunction(({ theme, wanted }) => {
-        const selected = Array.from(document.querySelectorAll('button')).find((btn) => btn.textContent?.trim() === wanted)
-        return document.documentElement.dataset.theme === theme && selected?.getAttribute('aria-pressed') === 'true'
-      }, {}, { theme: expectedResolved, wanted: label })
+      await p.waitForFunction(
+        ({ theme, wanted }) => {
+          const selected = Array.from(document.querySelectorAll('button')).find(
+            (btn) => btn.textContent?.trim() === wanted,
+          )
+          return document.documentElement.dataset.theme === theme && selected?.getAttribute('aria-pressed') === 'true'
+        },
+        {},
+        { theme: expectedResolved, wanted: label },
+      )
       const result = await p.evaluate(async (wanted) => {
         const { db } = await import('/src/db/database.ts')
         const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === wanted)
@@ -679,10 +685,14 @@ test('browser E2E', async (t) => {
       const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === '浅色')
       return document.documentElement.dataset.theme === 'light' && btn?.getAttribute('aria-pressed') === 'true'
     })
-    assert.equal(await p.evaluate(async () => {
-      const { db } = await import('/src/db/database.ts')
-      return (await db.settings.get('main'))?.theme
-    }), 'light', 'saving review settings never restores the old theme')
+    assert.equal(
+      await p.evaluate(async () => {
+        const { db } = await import('/src/db/database.ts')
+        return (await db.settings.get('main'))?.theme
+      }),
+      'light',
+      'saving review settings never restores the old theme',
+    )
 
     await selectTheme('跟随系统', 'dark', 'auto')
     await p.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }])
@@ -694,10 +704,14 @@ test('browser E2E', async (t) => {
     await p.waitForSelector('.app-shell', { timeout: 20000 })
     assert.equal(await p.evaluate(() => document.documentElement.dataset.theme), 'dark', 'auto mode survives reload')
     await nav(p, 'settings')
-    assert.equal(await p.evaluate(() => {
-      const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === '跟随系统')
-      return btn?.getAttribute('aria-pressed')
-    }), 'true', 'auto preference still selected after reload')
+    assert.equal(
+      await p.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === '跟随系统')
+        return btn?.getAttribute('aria-pressed')
+      }),
+      'true',
+      'auto preference still selected after reload',
+    )
     assert.deepEqual(errors, [], 'theme interaction has no page errors')
     await ctx.close()
   })
