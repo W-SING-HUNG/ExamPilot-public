@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from '../store/StoreContext'
 import { CardPad, PageHead, useConfirm, useToast } from '../components/ui'
 import type { AppSettings } from '../lib/types'
@@ -23,7 +23,26 @@ export function SettingsPage({ params: _params }: { params: Record<string, strin
   const { settings, ready, updateSettings, resetAllProgress } = useStore()
   const { toast, el } = useToast()
   const { confirm, confirmEl } = useConfirm()
-  const [draft, setDraft] = useState<AppSettings>(settings)
+  const [reviewIntervalBase, setReviewIntervalBase] = useState(settings.reviewIntervalBase)
+  const [saving, setSaving] = useState(false)
+
+  // Settings load asynchronously from IndexedDB; never overwrite persisted values
+  // with the initial defaults when the user later saves a different field.
+  useEffect(() => {
+    if (ready) setReviewIntervalBase(settings.reviewIntervalBase)
+  }, [ready, settings.reviewIntervalBase])
+
+  const chooseTheme = async (theme: AppSettings['theme']) => {
+    if (saving || settings.theme === theme) return
+    setSaving(true)
+    try {
+      await updateSettings({ theme })
+    } catch {
+      toast('外观保存失败，请重试')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   if (!ready) return null
 
@@ -43,14 +62,16 @@ export function SettingsPage({ params: _params }: { params: Record<string, strin
           ).map(([v, l]) => (
             <button
               key={v}
-              aria-pressed={draft.theme === v}
-              className={`btn btn-sm ${draft.theme === v ? 'btn-primary' : ''}`}
-              onClick={() => setDraft((d) => ({ ...d, theme: v }))}
+              aria-pressed={settings.theme === v}
+              className={`btn btn-sm ${settings.theme === v ? 'btn-primary' : ''}`}
+              disabled={saving}
+              onClick={() => void chooseTheme(v)}
             >
               {l}
             </button>
           ))}
         </div>
+        <div className="muted-2" style={{ marginTop: 8 }}>选择后立即生效并自动保存，无需点击下方保存按钮。</div>
       </CardPad>
 
       <CardPad style={{ marginTop: 14 }}>
@@ -63,8 +84,8 @@ export function SettingsPage({ params: _params }: { params: Record<string, strin
               type="number"
               min={1}
               max={10}
-              value={draft.reviewIntervalBase}
-              onChange={(e) => setDraft((d) => ({ ...d, reviewIntervalBase: Number(e.target.value) || 1 }))}
+              value={reviewIntervalBase}
+              onChange={(e) => setReviewIntervalBase(Number(e.target.value) || 1)}
             />
           </label>
         </div>
@@ -74,14 +95,22 @@ export function SettingsPage({ params: _params }: { params: Record<string, strin
         <div className="btn-row">
           <button
             className="btn btn-primary"
-            onClick={() => {
-              void updateSettings(draft)
-              toast('设置已保存')
+            disabled={saving}
+            onClick={async () => {
+              setSaving(true)
+              try {
+                await updateSettings({ reviewIntervalBase })
+                toast('复习参数已保存')
+              } catch {
+                toast('复习参数保存失败，请重试')
+              } finally {
+                setSaving(false)
+              }
             }}
           >
             保存设置
           </button>
-          <button className="btn btn-ghost" onClick={() => setDraft(settings)}>
+          <button className="btn btn-ghost" onClick={() => setReviewIntervalBase(settings.reviewIntervalBase)}>
             还原
           </button>
         </div>
