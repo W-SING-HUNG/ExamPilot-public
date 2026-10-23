@@ -71,7 +71,9 @@ export function SettingsPage({ params: _params }: { params: Record<string, strin
             </button>
           ))}
         </div>
-        <div className="muted-2" style={{ marginTop: 8 }}>选择后立即生效并自动保存，无需点击下方保存按钮。</div>
+        <div className="muted-2" style={{ marginTop: 8 }}>
+          选择后立即生效并自动保存，无需点击下方保存按钮。
+        </div>
       </CardPad>
 
       <CardPad style={{ marginTop: 14 }}>
