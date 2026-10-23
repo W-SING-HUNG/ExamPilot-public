@@ -648,7 +648,10 @@ test('browser E2E', async (t) => {
         return true
       }, label)
       assert.ok(clicked, `theme choice exists: ${label}`)
-      await p.waitForFunction((theme) => document.documentElement.dataset.theme === theme, {}, expectedResolved)
+      await p.waitForFunction(({ theme, wanted }) => {
+        const selected = Array.from(document.querySelectorAll('button')).find((btn) => btn.textContent?.trim() === wanted)
+        return document.documentElement.dataset.theme === theme && selected?.getAttribute('aria-pressed') === 'true'
+      }, {}, { theme: expectedResolved, wanted: label })
       const result = await p.evaluate(async (wanted) => {
         const { db } = await import('/src/db/database.ts')
         const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === wanted)
