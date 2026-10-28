@@ -2,6 +2,8 @@ import { useCallback, useMemo, useState } from 'react'
 import { useStore } from '../store/StoreContext'
 import { questionById, TYPE_LABEL } from '../lib/bank'
 import { db } from '../db/database'
+import { IS_WEB_EDITION } from '../lib/edition'
+import { useSync } from '../sync/CloudStore'
 import {
   CardPad,
   PageHead,
@@ -67,6 +69,8 @@ async function loadHistoryPage(
     .reverse()
     .until(() => collected.length >= limit)
     .each((h) => {
+      // Web edition: rows of questions outside the installed bank (old demo data) are not listed.
+      if (IS_WEB_EDITION && !questionById.has(h.qid)) return
       if (mode && h.mode !== mode) return
       if (result === 'ok' && h.isCorrect !== true) return
       if (result === 'bad' && h.isCorrect !== false) return
@@ -83,8 +87,30 @@ async function loadHistoryPage(
   return { items: collected, hasMore: collected.length === limit }
 }
 
+function pageInMemory(
+  all: HistoryEntry[],
+  filters: { mode: string; result: string; q: string },
+  offset: number,
+  limit: number,
+): ListPage<HistoryEntry> {
+  const { mode, result, q } = filters
+  const keyword = q.trim()
+  const rows = all.filter((h) => {
+    const question = questionById.get(h.qid)
+    if (IS_WEB_EDITION && !question) return false
+    if (mode && h.mode !== mode) return false
+    if (result === 'ok' && h.isCorrect !== true) return false
+    if (result === 'bad' && h.isCorrect !== false) return false
+    if (result === 'unscored' && h.isCorrect !== null) return false
+    if (keyword && !(question && (question.stem.includes(keyword) || question.chapter.includes(keyword)))) return false
+    return true
+  })
+  const items = rows.slice(offset, offset + limit)
+  return { items, hasMore: offset + limit < rows.length }
+}
+
 export function HistoryPage({ params: _params }: { params: Record<string, string> }) {
-  const { records, history, ready, clearHistory } = useStore()
+  const { records, history, raw, legacy, ready, clearHistory } = useStore()
   const { toast, el } = useToast()
   const { confirm, confirmEl } = useConfirm()
   const [mode, setMode] = useState('')
@@ -93,10 +119,20 @@ export function HistoryPage({ params: _params }: { params: Record<string, string
   const [clearing, setClearing] = useState(false)
 
   // The query key drives a full reset of the paged list whenever it changes.
-  const queryKey = `${mode}|${result}|${q.trim()}`
+  const queryKey = `${mode}|${result}|${q.trim()}|${history.length}|${history[0]?.id ?? ''}`
+  // Account sync: history lives in the account store (already in memory), not in
+  // the old per-browser database, so page over the store's copy instead.
+  const sync = useSync()
+  const sortedHistory = useMemo(
+    () => (sync ? [...history].sort((a, b) => b.submittedAt - a.submittedAt) : null),
+    [sync, history],
+  )
   const load = useCallback(
-    (offset: number, limit: number) => loadHistoryPage({ mode, result, q }, offset, limit),
-    [mode, result, q],
+    (offset: number, limit: number) =>
+      sortedHistory
+        ? Promise.resolve(pageInMemory(sortedHistory, { mode, result, q }, offset, limit))
+        : loadHistoryPage({ mode, result, q }, offset, limit),
+    [mode, result, q, sortedHistory],
   )
   const list = useInfiniteList<HistoryEntry>(queryKey, load, PAGE_SIZE)
   const showSkeleton = useDeferred(list.loading && list.items.length === 0)
@@ -160,7 +196,7 @@ export function HistoryPage({ params: _params }: { params: Record<string, string
               onClick={async () => {
                 const ok = await confirm({
                   title: '清空全部练习历史？',
-                  body: `将删除 ${history.length} 条作答记录。题目练习进度与错题本不受影响，但历史记录无法恢复。`,
+                  body: `将删除 ${raw.history.length} 条作答记录${legacy.history ? `（含 ${legacy.history} 条旧版演示题库记录）` : ''}。题目练习进度与错题本不受影响，但历史记录无法恢复。`,
                   confirmLabel: '清空历史',
                   danger: true,
                 })
@@ -238,6 +274,11 @@ export function HistoryPage({ params: _params }: { params: Record<string, string
           <span className="muted-2" style={{ marginLeft: 'auto' }}>
             已载入 {list.items.length} 条 · 总计 {history.length} 条
           </span>
+          {legacy.history > 0 && (
+            <span className="muted-2" style={{ flexBasis: '100%' }}>
+              另有 {legacy.history} 条旧版演示题库的作答记录不属于当前题库，未列出、不计入统计（仍保留在本浏览器）。
+            </span>
+          )}
         </div>
       </CardPad>
 

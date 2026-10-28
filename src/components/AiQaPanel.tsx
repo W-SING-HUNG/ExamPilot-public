@@ -95,6 +95,19 @@ export function AiGradePanel({
           )}
         </div>
       </div>
+      {!loading && !result && !cancelled && !reason && (
+        <div className="ai-step-hint" role="group" aria-label="下一步：AI 评阅">
+          <span className="ai-step-n" aria-hidden="true">
+            2
+          </span>
+          <span style={{ flex: '1 1 220px' }}>
+            作答已提交，状态：<b>已提交，待评阅</b>。需要参考分、采分点和修改建议时，点这里发起 AI 评阅（可选）。
+          </span>
+          <button className="btn btn-primary" onClick={() => void grade()}>
+            提交 AI 评阅
+          </button>
+        </div>
+      )}
       <div className="muted-2" style={{ marginBottom: 8 }}>
         AI 评阅仅为参考评阅，非官方标准分数；题库未提供本题标准答案。
       </div>
@@ -125,6 +138,9 @@ export function AiGradePanel({
           <List title="扣分依据" items={result.deductions} tone="warn" />
           <List title="修改建议" items={result.suggestions} tone="accent" />
           {result.structureNote && <div className="explain">结构点评：{result.structureNote}</div>}
+          <div className="muted-2">
+            知识依据：<b>AI 模型知识</b>（题库没有本题的采分点），可能与教材表述不一致，请以教材与课堂讲授为准。
+          </div>
           <div className="muted-2">{result.disclaimer}</div>
           {saved && (
             <div className="muted-2" role="status">

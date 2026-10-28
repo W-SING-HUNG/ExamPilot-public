@@ -100,3 +100,11 @@ __pycache__/
 
 # ---- E2E upload scratch ----
 tools/.e2e-uploads/
+
+# ---- Class website (web edition) build output and local verification state ----
+dist-web/
+.web-build/
+.wrangler/
+.web-deploy.local.json
+worker/assets.generated.js
+worker/welcome/pages.generated.js

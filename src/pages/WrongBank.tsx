@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store/StoreContext'
 import { allQuestions, chapterOrder, TYPE_LABEL, questionById } from '../lib/bank'
+import { ChapterPicker } from '../components/ChapterPicker'
 import { selectQuestions } from '../lib/scheduler'
 import { QuestionRunner } from '../components/QuestionRunner'
 import { Bar, CardPad, PageHead, Tag, Empty, useConfirm } from '../components/ui'
@@ -9,6 +10,8 @@ import { clearDraft, loadDraft, type SessionDraft } from '../lib/session-draft'
 import type { SessionResult } from '../lib/session-outcome'
 import type { Question } from '../lib/types'
 import type { RouteName } from '../store/router'
+import { IS_WEB_EDITION } from '../lib/edition'
+import { WrongExplorer } from '../web/WrongExplorer'
 
 const FILTER_LABEL = {
   wrong: '错题',
@@ -205,26 +208,36 @@ export function WrongBank({
             </button>
           ))}
         </div>
-        <div className="pill-scroll has-fade" style={{ marginBottom: 14 }}>
-          <button className={`btn btn-sm ${chapter === '' ? 'btn-primary' : ''}`} onClick={() => setChapter('')}>
-            全部章节
-          </button>
-          {chapterOrder.map((ch) => {
-            const e = byChapter.get(ch)
-            return (
-              <button
-                key={ch}
-                className={`btn btn-sm ${chapter === ch ? 'btn-primary' : ''}`}
-                onClick={() => setChapter(ch)}
-                disabled={!e}
-                title={e ? `错 ${e.wrong} · 难点 ${e.struggling}` : '暂无症状'}
-              >
-                {ch}
-                {e?.wrong ? ` (${e.wrong})` : ''}
-              </button>
-            )
-          })}
-        </div>
+        {IS_WEB_EDITION ? (
+          <p className="muted-2" style={{ margin: '0 0 12px' }}>
+            章节：{chapter || '全部章节'}（在下方分布图或筛选里切换）
+          </p>
+        ) : (
+          <ChapterPicker
+            total={chapterOrder.length}
+            summary={chapter === '' ? '当前：全部章节' : `已选：${chapter}`}
+            style={{ marginBottom: 14 }}
+          >
+            <button className={`btn btn-sm ${chapter === '' ? 'btn-primary' : ''}`} onClick={() => setChapter('')}>
+              全部章节
+            </button>
+            {chapterOrder.map((ch) => {
+              const e = byChapter.get(ch)
+              return (
+                <button
+                  key={ch}
+                  className={`btn btn-sm ${chapter === ch ? 'btn-primary' : ''}`}
+                  onClick={() => setChapter(ch)}
+                  disabled={!e}
+                  title={e ? `错 ${e.wrong} · 难点 ${e.struggling}` : '暂无症状'}
+                >
+                  {ch}
+                  {e?.wrong ? ` (${e.wrong})` : ''}
+                </button>
+              )
+            })}
+          </ChapterPicker>
+        )}
 
         <div className="card-title">复刷题量</div>
         <div className="btn-row">
@@ -270,101 +283,122 @@ export function WrongBank({
         </div>
       </CardPad>
 
-      <CardPad style={{ marginTop: 14 }}>
-        <div className="card-title">各章节错题分布</div>
-        {byChapter.size === 0 ? (
-          <Empty text="暂无错题记录。做错题目后会自动收录到这里。" />
-        ) : (
-          <div className="col" style={{ gap: 10 }}>
-            {Array.from(byChapter.entries())
-              .sort((a, b) => b[1].wrong - a[1].wrong)
-              .map(([ch, e]) => (
-                <div key={ch}>
-                  <div className="row-between" style={{ marginBottom: 4 }}>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      style={{ padding: '2px 6px' }}
-                      onClick={() => setChapter(ch)}
-                    >
-                      {ch}
-                    </button>
-                    <span className="muted-2">
-                      答错 {e.wrong} · 难点 {e.struggling} · 掌握 {e.mastered}
-                    </span>
-                  </div>
-                  <Bar value={e.attempted ? e.wrong / e.attempted : 0} tone="bad" />
-                </div>
-              ))}
-          </div>
-        )}
-      </CardPad>
+      {IS_WEB_EDITION ? (
+        <WrongExplorer
+          records={records}
+          filter={filter}
+          chapter={chapter}
+          setChapter={setChapter}
+          onPractice={(qs) =>
+            begin(
+              qs.length === 1
+                ? qs
+                : selectQuestions({ pool: qs, records, now: Date.now(), count: Math.min(count, qs.length) }),
+              `s-${Date.now()}`,
+            )
+          }
+        />
+      ) : (
+        <>
+          <CardPad style={{ marginTop: 14 }}>
+            <div className="card-title">各章节错题分布</div>
+            {byChapter.size === 0 ? (
+              <Empty text="暂无错题记录。做错题目后会自动收录到这里。" />
+            ) : (
+              <div className="col" style={{ gap: 10 }}>
+                {Array.from(byChapter.entries())
+                  .sort((a, b) => b[1].wrong - a[1].wrong)
+                  .map(([ch, e]) => (
+                    <div key={ch}>
+                      <div className="row-between" style={{ marginBottom: 4 }}>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ padding: '2px 6px' }}
+                          onClick={() => setChapter(ch)}
+                        >
+                          {ch}
+                        </button>
+                        <span className="muted-2">
+                          答错 {e.wrong} · 难点 {e.struggling} · 掌握 {e.mastered}
+                        </span>
+                      </div>
+                      <Bar value={e.attempted ? e.wrong / e.attempted : 0} tone="bad" />
+                    </div>
+                  ))}
+              </div>
+            )}
+          </CardPad>
 
-      <CardPad style={{ marginTop: 14 }}>
-        {/*
+          <CardPad style={{ marginTop: 14 }}>
+            {/*
           The heading has to describe what is actually rendered. The list is
           capped at 60 rows, so printing "错题清单（N）" for N=100 showed a count
           the table did not match.
         */}
-        <div className="card-title">
-          {FILTER_LABEL[filter]}清单
-          {wrongQuestions.length > 60 ? `（显示前 60 / 共 ${wrongQuestions.length}）` : `（${wrongQuestions.length}）`}
-        </div>
-        {wrongQuestions.length === 0 ? (
-          <Empty text="当前筛选下没有题目。" />
-        ) : (
-          <div className="tbl-wrap">
-            <table className="tbl">
-              <caption className="sr-only">
-                {FILTER_LABEL[filter]}清单，共 {wrongQuestions.length} 条，当前显示前{' '}
-                {Math.min(60, wrongQuestions.length)} 条
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">题号</th>
-                  <th scope="col">题型</th>
-                  <th scope="col">章节</th>
-                  <th scope="col">题干</th>
-                  <th scope="col">答错次数</th>
-                  <th scope="col">状态</th>
-                </tr>
-              </thead>
-              <tbody>
-                {wrongQuestions.slice(0, 60).map((q) => {
-                  const r = records.get(q.id)!
-                  return (
-                    <tr key={q.id}>
-                      <td className="code">{q.bankNo}</td>
-                      <td>
-                        <Tag>{TYPE_LABEL[q.type]}</Tag>
-                      </td>
-                      <td>{q.chapter}</td>
-                      <td
-                        style={{
-                          maxWidth: 340,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                        title={q.stem.split('\n')[0]}
-                      >
-                        {q.stem.split('\n')[0]}
-                      </td>
-                      <td>
-                        <b style={{ color: 'var(--bad)' }}>{r.wrongCount}</b>
-                      </td>
-                      <td>
-                        <Tag tone={r.status === 'struggling' ? 'bad' : r.status === 'mastered' ? 'ok' : 'warn'}>
-                          {r.status === 'struggling' ? '难点' : r.status === 'mastered' ? '已掌握' : '巩固中'}
-                        </Tag>
-                      </td>
+            <div className="card-title">
+              {FILTER_LABEL[filter]}清单
+              {wrongQuestions.length > 60
+                ? `（显示前 60 / 共 ${wrongQuestions.length}）`
+                : `（${wrongQuestions.length}）`}
+            </div>
+            {wrongQuestions.length === 0 ? (
+              <Empty text="当前筛选下没有题目。" />
+            ) : (
+              <div className="tbl-wrap">
+                <table className="tbl">
+                  <caption className="sr-only">
+                    {FILTER_LABEL[filter]}清单，共 {wrongQuestions.length} 条，当前显示前{' '}
+                    {Math.min(60, wrongQuestions.length)} 条
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">题号</th>
+                      <th scope="col">题型</th>
+                      <th scope="col">章节</th>
+                      <th scope="col">题干</th>
+                      <th scope="col">答错次数</th>
+                      <th scope="col">状态</th>
                     </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardPad>
+                  </thead>
+                  <tbody>
+                    {wrongQuestions.slice(0, 60).map((q) => {
+                      const r = records.get(q.id)!
+                      return (
+                        <tr key={q.id}>
+                          <td className="code">{q.bankNo}</td>
+                          <td>
+                            <Tag>{TYPE_LABEL[q.type]}</Tag>
+                          </td>
+                          <td>{q.chapter}</td>
+                          <td
+                            style={{
+                              maxWidth: 340,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={q.stem.split('\n')[0]}
+                          >
+                            {q.stem.split('\n')[0]}
+                          </td>
+                          <td>
+                            <b style={{ color: 'var(--bad)' }}>{r.wrongCount}</b>
+                          </td>
+                          <td>
+                            <Tag tone={r.status === 'struggling' ? 'bad' : r.status === 'mastered' ? 'ok' : 'warn'}>
+                              {r.status === 'struggling' ? '难点' : r.status === 'mastered' ? '已掌握' : '巩固中'}
+                            </Tag>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardPad>
+        </>
+      )}
       {confirmEl}
     </SessionShell>
   )

@@ -4,7 +4,7 @@
 </p>
 
 <p align="center">
-  <a href="#"><img alt="version" src="https://img.shields.io/badge/version-0.2.0-blue"></a>
+  <a href="#"><img alt="version" src="https://img.shields.io/badge/version-0.3.0-blue"></a>
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="node" src="https://img.shields.io/badge/node-%3E%3D20-brightgreen">
 </p>
@@ -13,7 +13,7 @@
   <em>Open-source study cockpit for the "Introduction to Xi Jinping Thought on Socialism with Chinese Characteristics for a New Era" final exam.</em>
 </p>
 
-> **状态：v0.2.0。** 功能完整并通过自动化测试，但**仍缺乏大规模真实使用验证**——请不要把本版本当作已获长期使用检验的稳定产品。
+> **状态：v0.3.0。** 源码、构建与自动化测试均已通过检查，但**尚未经过大规模真实教学使用验证**——请按预览版本对待。
 
 ---
 
@@ -21,6 +21,18 @@ ExamPilot 是一个开源、本地优先的期末复习应用：解析课程题�
 
 
 **题库不随仓库分发。** 公开仓库只包含一份自行编写的示例题库（17 题，涵盖全部 5 种题型），用于演示与 CI 测试；完整课程题库由你本地提供，仓库不包含、也未获授权再分发该题库。示例题按考点自行撰写，题干不复用未获授权的题库表述；其中 3 道主观题只有题干、没有参考答案，在应用内标记为「无官方标准答案」。
+
+## 两个运行形态
+
+|  | 桌面版（本地优先） | 网页版 |
+| --- | --- | --- |
+| 运行位置 | 浏览器 + 可选的本机 AI 代理 | Cloudflare Workers 静态资源 |
+| 数据 | 浏览器 IndexedDB，仅本机 | 可选账号 + D1 跨设备同步 |
+| 访问控制 | 无 | Cloudflare Access（邮箱验证码） |
+| AI 助手 | 可选，接你自备的网关 | 服务端代理，按账号授权 |
+| 典型场景 | 个人离线复习 | 班级或多人共用 |
+
+两者共用同一套题库、评分与复习算法。
 
 ## 特性
 
@@ -103,9 +115,47 @@ npm run build:public   # 强制公开题库 → 构建 → 校验产物
 
 这一步是必要的：`src/lib/bank.ts` 静态导入生成器，在一台装有完整课程题库的机器上直接 `npm run build`，**该题库会被打进 `dist/`**，而从仓库里看不出来。对外分发请始终使用 `build:public`（或对已有产物运行 `npm run verify:release`）。
 
+## 网页版部署
+
+网页版把同一套前端构建为 Cloudflare Workers 静态资源，并提供可选的账号与跨设备同步后端。
+
+```bash
+npm run build:web        # 用本机 data/bank.json 构建完整题库版 → dist-web/
+npm run build:web:demo   # 只用示例题库构建 → dist-web/
+npm run web:verify       # 校验产物：题库指纹一致、不含 .env / 密钥 / 学习记录 / source map
+npm run web:deploy       # 上传到 Worker（需手动输入 YES 确认）
+```
+
+`web:deploy` 在上传前后都会检查目标地址的 Cloudflare Access：匿名请求必须被 302 重定向到你的 Access 登录页，否则拒绝上传；上传后自检失败会打印回滚命令。
+
+同步后端与欢迎站分别由下列脚本部署：
+
+```bash
+node tools/web/deploy-sync.mjs staging|production      # Worker + D1 迁移
+node tools/web/deploy-welcome.mjs staging|production   # 欢迎站
+```
+
+### 部署所需环境变量
+
+| 变量 | 用途 |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | 部署凭证（Workers / D1 / Access 权限） |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 |
+| `EXAMPILOT_WORKERS_SUBDOMAIN` | `*.workers.dev` 子域 |
+| `EXAMPILOT_ACCESS_TEAM_URL` | Zero Trust 团队域名 |
+| `EXAMPILOT_PUBLIC_ORIGIN` | 构建期站点公开地址（`og:image` 等绝对链接） |
+| `EXAMPILOT_{STAGING,PROD}_SYNC_DB_ID` | D1 主库 |
+| `EXAMPILOT_{STAGING,PROD}_DELETIONS_DB_ID`、`_MEDIA_DB_ID` | 删除账本 / 媒体库 |
+| `EXAMPILOT_{STAGING,PROD}_ACCESS_POLICY_ID`、`_ACCESS_APP_ID`、`_ACCESS_AUD` | Access 应用审计 |
+| `SUPER_OWNERS` | 超级管理员邮箱，逗号分隔 |
+
+Worker 运行时密钥（`AI_API_KEY`、`BREVO_API_KEY`、`CF_ACCESS_TOKEN`、`PLATFORM_SECRET`、`TURNSTILE_SECRET`）用 `wrangler secret put` 设置，不写入仓库。
+
+缺少必需变量时脚本会直接报错退出，不会套用任何默认的生产值。
+
 ## 技术栈
 
-React 18 · TypeScript · Vite · Dexie（IndexedDB）· Node 内置 http（AI 代理，零运行时依赖）
+React 18 · TypeScript · Vite · Dexie（IndexedDB）· Node 内置 http（AI 代理，零运行时依赖）· Cloudflare Workers / D1 / Access（网页版）
 
 ## 文档
 
@@ -138,9 +188,11 @@ docs/           架构与复习策略文档
 
 - **考试要求未知**：模拟考试的默认规则只是模板，请按真实考纲在「设置考试规则」中填一次
 - **主观题无标准答案**：题库仅提供题干；AI 评阅为参考评阅，非官方分数
-- **数据仅在本地**：无云端同步，换设备请用「设置 → 数据备份」导出后恢复
+- **数据默认仅在本地**：桌面版把学习记录保存在浏览器 IndexedDB，换设备用「设置 → 数据备份」导出后恢复；网页版可选启用账号与跨设备同步，详见 [docs/web-class-edition.md](docs/web-class-edition.md)
 - **AI 网关未内置**：需你自行提供 OpenAI 兼容网关，在「设置 → AI 网关」配置
 - **模拟考试规则保存在本机浏览器**（localStorage），不会进入学习数据备份，也不随「重置学习数据」清除
+- **网页版部署需要你自己的 Cloudflare 账户**（Workers / D1 / Access），且部署脚本只在本项目的账户拓扑上验证过；换到你的账户时请按文档逐步核对资源绑定
+- **仓库不含任何账户、资源或域名标识**，部署前必须自行提供环境变量
 
 ## 免责声明
 

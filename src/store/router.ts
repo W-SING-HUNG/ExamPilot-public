@@ -30,6 +30,10 @@ export type RouteName =
   | 'bank'
   | 'io'
   | 'ai'
+  // Web edition only: AI permission management (visible to admins only).
+  | 'admin'
+  // Web edition only: 个人中心 (account, identity, theme, data entry points).
+  | 'profile'
 
 /** Routes that own a sidebar entry, in display order. */
 export const NAV_ROUTES: RouteName[] = ['home', 'plan', 'practice', 'subjective', 'wrong', 'mock', 'settings']

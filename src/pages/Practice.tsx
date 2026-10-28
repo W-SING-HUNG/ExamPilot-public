@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { IS_WEB_EDITION } from '../lib/edition'
 import { useStore } from '../store/StoreContext'
 import { allQuestions, chapterOrder, TYPE_LABEL, questionById } from '../lib/bank'
+import { ChapterPicker } from '../components/ChapterPicker'
 import { computeDiagnosis } from '../lib/analysis'
 import { selectQuestions } from '../lib/scheduler'
 import { QuestionRunner } from '../components/QuestionRunner'
@@ -56,6 +58,7 @@ export function Practice({
   const [phase, setPhase] = useState<SessionPhase>('configure')
   const [session, setSession] = useState<Question[] | null>(null)
   const [sessionId, setSessionId] = useState('')
+  const startRef = useRef<HTMLButtonElement | null>(null)
   const [result, setResult] = useState<SessionResult | null>(null)
   // Draft mode name stays 'practice' so drafts written by the old 分章练习 page
   // (and the legacy `exampilot_practice_session` key) still resume here.
@@ -190,9 +193,23 @@ export function Practice({
           role="tab"
           aria-selected={view === 'practice'}
           className={`btn btn-sm ${view === 'practice' ? 'btn-primary' : ''}`}
-          onClick={() => setView('practice')}
+          onClick={() => {
+            // This is a view tab, not the start action. It used to do nothing visible
+            // when the view was already open. Now it always lands the
+            // user on the real start button: scroll to it, focus it and flash it once.
+            setView('practice')
+            requestAnimationFrame(() => {
+              const b = startRef.current
+              if (!b) return
+              b.scrollIntoView({ behavior: 'smooth', block: 'center' })
+              b.focus({ preventScroll: true })
+              b.classList.remove('attn')
+              void b.offsetWidth
+              b.classList.add('attn')
+            })
+          }}
         >
-          开始刷题
+          练习设置
         </button>
         <button
           role="tab"
@@ -265,7 +282,11 @@ export function Practice({
                 <div className="card-title">
                   章节{chapters.length === 0 ? '（不选 = 全部章节）' : `（已选 ${chapters.length} 个）`}
                 </div>
-                <div className="pill-scroll has-fade" style={{ marginBottom: 12 }}>
+                <ChapterPicker
+                  total={chapterOrder.length}
+                  summary={chapters.length === 0 ? '当前：全部章节' : `已选：${chapters.join('、')}`}
+                  style={{ marginBottom: 12 }}
+                >
                   <button
                     className={`btn btn-sm ${chapters.length === 0 ? 'btn-primary' : ''}`}
                     onClick={() => setChapters([])}
@@ -282,7 +303,7 @@ export function Practice({
                       {ch}
                     </button>
                   ))}
-                </div>
+                </ChapterPicker>
                 {activeChapterStat && (
                   <div className="row-between" style={{ marginBottom: 14 }}>
                     <div className="muted">
@@ -344,8 +365,13 @@ export function Practice({
                 按章节 → "开始练习", 按题型 → "开始专项训练", 自定义 → "开始刷题".
                 All three call the same start().
               */}
-              <button className="btn btn-primary btn-lg" onClick={start} disabled={effectivePool.length === 0}>
-                {mode === 'chapter'
+              <button
+                ref={startRef}
+                className="btn btn-primary btn-lg"
+                onClick={start}
+                disabled={effectivePool.length === 0}
+              >
+                {IS_WEB_EDITION || mode === 'chapter'
                   ? `开始练习（${Math.min(count, effectivePool.length)} 题）`
                   : mode === 'type'
                     ? `开始专项训练（${Math.min(count, effectivePool.length)} 题）`

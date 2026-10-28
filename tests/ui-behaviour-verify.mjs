@@ -5,7 +5,7 @@
  * and asserts on what a user would see. This is deliberately separate from the
  * unit tests: those pin the logic, this proves the screens behave.
  *
- * Run: node tests/workbuddy-verify.mjs
+ * Run: node tests/ui-behaviour-verify.mjs
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

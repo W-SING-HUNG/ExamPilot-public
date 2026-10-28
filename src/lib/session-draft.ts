@@ -23,6 +23,21 @@
  */
 import type { Outcome } from './session-outcome'
 
+/**
+ * Optional storage backend. The web edition plugs in the account's cloud
+ * document store (synced across devices); the desktop edition keeps the
+ * default per-tab sessionStorage behaviour below, unchanged.
+ */
+export interface DraftBackend {
+  load(mode: string): unknown
+  save(mode: string, draft: SessionDraft): void
+  clear(mode: string, sessionId?: string): void
+}
+let backend: DraftBackend | null = null
+export function setDraftBackend(b: DraftBackend | null): void {
+  backend = b
+}
+
 export const DRAFT_PREFIX = 'exampilot.session.'
 
 /** Legacy keys kept only for one-time migration. */
@@ -162,6 +177,10 @@ function clearLegacy(): void {
 }
 
 export function saveDraft(draft: Omit<SessionDraft, 'savedAt'>): void {
+  if (backend) {
+    backend.save(draft.mode, { ...draft, savedAt: Date.now() })
+    return
+  }
   try {
     const payload: SessionDraft = { ...draft, savedAt: Date.now() }
     sessionStorage.setItem(DRAFT_PREFIX + draft.mode, JSON.stringify(payload))
@@ -172,6 +191,10 @@ export function saveDraft(draft: Omit<SessionDraft, 'savedAt'>): void {
 }
 
 export function loadDraft(mode: string): SessionDraft | null {
+  if (backend) {
+    const v = backend.load(mode)
+    return valid(v) ? v : null
+  }
   try {
     const raw = sessionStorage.getItem(DRAFT_PREFIX + mode)
     if (!raw) return migrateLegacy(mode)
@@ -187,7 +210,11 @@ export function loadDraft(mode: string): SessionDraft | null {
   }
 }
 
-export function clearDraft(mode: string): void {
+export function clearDraft(mode: string, sessionId?: string): void {
+  if (backend) {
+    backend.clear(mode, sessionId)
+    return
+  }
   try {
     sessionStorage.removeItem(DRAFT_PREFIX + mode)
   } catch {

@@ -1,0 +1,18 @@
+// Class website (web edition) — Workers Static Assets, no server code.
+// Uploaded ONLY from a maintainer machine via `npm run web:deploy` (never from CI).
+// Access (Zero Trust) protection of this Worker is configured in the Cloudflare
+// dashboard, not here; web:deploy refuses to upload unless it is active.
+// The account ID is read from .web-deploy.local.json / CLOUDFLARE_ACCOUNT_ID (not committed).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "exampilot-class",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  // No version-preview URLs: the only entry point is the workers.dev address above.
+  "preview_urls": false,
+  "assets": {
+    "directory": "./dist-web",
+    "not_found_handling": "single-page-application",
+  },
+  "observability": { "enabled": false },
+}

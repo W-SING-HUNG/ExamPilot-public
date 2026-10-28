@@ -7,10 +7,13 @@ export default tseslint.config(
   {
     ignores: [
       'dist/**',
+      'dist-web/**',
+      '.web-build/**',
       'node_modules/**',
       'data/bank.json',
       'data/local-bank.json',
       'src/lib/local-bank.generated.ts',
+      'worker/welcome/pages.generated.js',
       'tools/**',
       'tests/**',
       'scratch/**',
@@ -32,6 +35,11 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'warn',
       'no-console': ['warn', { allow: ['warn', 'error'] }],
     },
+  },
+  // Public portal script (plain browser JS, served by the welcome Worker)
+  {
+    files: ['worker/welcome/*.js'],
+    languageOptions: { globals: { ...globals.browser }, sourceType: 'script' },
   },
   // Node scripts (AI proxy, build tooling) — server code, no DOM globals
   {

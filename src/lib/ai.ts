@@ -2,6 +2,23 @@
  * AI client — talks to the local proxy only (no API key in frontend).
  * Graceful degradation: if unavailable, returns {ok:false, reason} so UI can continue.
  */
+import { AI_DISABLED_REASON, IS_WEB_EDITION } from './edition'
+import { aiUsable, markAiForbidden } from './ai-access'
+
+/** Web edition: AI calls go to this site's own /api (Access-protected); no client-side gateway settings. */
+const WEB_HEADERS: Record<string, string> = IS_WEB_EDITION ? { 'X-ExamPilot-Client': '1' } : {}
+const WEB_NO_ACCESS = '当前账号暂不能使用 AI'
+const WEB_SESSION_EXPIRED = '登录已失效，请刷新页面重新登录后再试'
+
+/** Server said "no AI for this account": hide AI right away (web edition). */
+function noteForbidden(status: number, data: unknown) {
+  if (!IS_WEB_EDITION) return
+  const d = data as { error?: string; code?: string } | null
+  // Only a definitive refusal hides AI. 503 AI_PERMISSION_UNAVAILABLE is a failed
+  // check (shown as an error, retryable), not a revoked grant (N-01).
+  if (status === 403 && d?.error === 'ai_forbidden' && d?.code !== 'AI_PERMISSION_UNAVAILABLE') markAiForbidden()
+}
+
 export interface AiConfig {
   baseUrl: string
   model: string
@@ -19,6 +36,10 @@ export interface AiQaRequest {
   userAnswer?: string
   questionContext?: { chapter: string; bankNo: number }
   messages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
+  /** web edition: let the model search the web (real search, cited sources) */
+  search?: boolean
+  /** web edition: JPEG/PNG data URIs attached to the last user message */
+  images?: string[]
 }
 
 export interface AiQaResponse {
@@ -27,6 +48,10 @@ export interface AiQaResponse {
   reason?: string
   provider?: string
   model?: string
+  /** server error code (web), e.g. BUSY */
+  code?: string
+  /** BUSY: seconds until a concurrency slot frees up (server lease expiry) */
+  retryAfter?: number
 }
 
 export interface AiGradeRequest {
@@ -79,10 +104,16 @@ async function postJson<T>(url: string, body: unknown, timeoutMs: number, extern
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...WEB_HEADERS },
       body: JSON.stringify(body),
       signal: ctrl.signal,
+      ...(IS_WEB_EDITION
+        ? { credentials: 'same-origin' as const, redirect: 'manual' as const, cache: 'no-store' as const }
+        : {}),
     })
+    if (IS_WEB_EDITION && (res.type === 'opaqueredirect' || res.status === 401)) {
+      return { ok: false, reason: WEB_SESSION_EXPIRED } as unknown as T
+    }
     const text = await res.text()
     let data: unknown = null
     try {
@@ -98,6 +129,7 @@ async function postJson<T>(url: string, body: unknown, timeoutMs: number, extern
           : `请求失败（HTTP ${res.status}）：${text.slice(0, 160)}`,
       } as unknown as T
     }
+    noteForbidden(res.status, data)
     return data as T
   } catch (e) {
     if ((e as Error).name === 'AbortError') {
@@ -111,6 +143,8 @@ async function postJson<T>(url: string, body: unknown, timeoutMs: number, extern
 }
 
 export function getAiConfig(): AiConfig {
+  // Web edition: fixed — the browser can never point AI calls elsewhere.
+  if (IS_WEB_EDITION) return DEFAULT_CONFIG
   try {
     const raw = localStorage.getItem('exampilot.ai.config')
     if (raw) {
@@ -124,10 +158,12 @@ export function getAiConfig(): AiConfig {
 }
 
 export function setAiConfig(c: Partial<AiConfig>): void {
+  if (IS_WEB_EDITION) return
   localStorage.setItem('exampilot.ai.config', JSON.stringify({ ...getAiConfig(), ...c }))
 }
 
 export async function aiAskQuestion(req: AiQaRequest, signal?: AbortSignal): Promise<AiQaResponse> {
+  if (!aiUsable()) return { ok: false, reason: IS_WEB_EDITION ? WEB_NO_ACCESS : AI_DISABLED_REASON }
   const cfg = getAiConfig()
   return postJson<AiQaResponse>(`${cfg.baseUrl}/ai/qa`, req, cfg.timeoutMs, signal)
 }
@@ -148,6 +184,7 @@ export async function aiAskQuestionStream(
   onChunk: (chunk: string, fullText: string) => void,
   signal?: AbortSignal,
 ): Promise<AiQaResponse> {
+  if (!aiUsable()) return { ok: false, reason: IS_WEB_EDITION ? WEB_NO_ACCESS : AI_DISABLED_REASON }
   const cfg = getAiConfig()
   const ctrl = new AbortController()
   let timedOut = false
@@ -183,10 +220,17 @@ export async function aiAskQuestionStream(
       headers: {
         'Content-Type': 'application/json',
         Accept: 'text/event-stream',
+        ...WEB_HEADERS,
       },
       body: JSON.stringify({ ...req, stream: true }),
       signal: ctrl.signal,
+      ...(IS_WEB_EDITION
+        ? { credentials: 'same-origin' as const, redirect: 'manual' as const, cache: 'no-store' as const }
+        : {}),
     })
+    if (IS_WEB_EDITION && (res.type === 'opaqueredirect' || res.status === 401)) {
+      return { ok: false, reason: WEB_SESSION_EXPIRED }
+    }
 
     // 如果服务端不支持 SSE 或直接以普通 JSON 返回（例如未配置、错误等）
     const contentType = res.headers.get('content-type') || ''
@@ -194,6 +238,7 @@ export async function aiAskQuestionStream(
       const text = await res.text()
       try {
         const json = JSON.parse(text)
+        noteForbidden(res.status, json)
         if (json.ok && json.answer) {
           onChunk(json.answer, json.answer)
           return json
@@ -242,7 +287,8 @@ export async function aiAskQuestionStream(
               gotText = true
               onChunk(data.delta, accumulated)
             } else if (data.type === 'error') {
-              return { ok: false, reason: data.reason || '未知流式错误' }
+              if (IS_WEB_EDITION && data.code === 'AI_FORBIDDEN') markAiForbidden()
+              return { ok: false, reason: data.reason || '未知流式错误', code: data.code }
             }
           } catch {
             // ignore partial json
@@ -279,6 +325,7 @@ export async function aiAskQuestionStream(
 }
 
 export async function aiGrade(req: AiGradeRequest, signal?: AbortSignal): Promise<AiGradeResponse> {
+  if (!aiUsable()) return { ok: false, reason: IS_WEB_EDITION ? WEB_NO_ACCESS : AI_DISABLED_REASON }
   const cfg = getAiConfig()
   return postJson<AiGradeResponse>(`${cfg.baseUrl}/ai/grade`, req, cfg.timeoutMs, signal)
 }
@@ -296,8 +343,9 @@ export interface AiStatusResponse {
 }
 
 export async function aiStatus(): Promise<AiStatusResponse> {
+  if (!aiUsable()) return { ok: false, configured: false, message: IS_WEB_EDITION ? WEB_NO_ACCESS : AI_DISABLED_REASON }
   try {
-    const res = await fetch('/api/ai/status')
+    const res = await fetch('/api/ai/status', { headers: WEB_HEADERS })
     const text = await res.text()
     try {
       return JSON.parse(text)
@@ -306,5 +354,82 @@ export async function aiStatus(): Promise<AiStatusResponse> {
     }
   } catch (e) {
     return { ok: false, configured: false, message: `AI 服务不可用：${(e as Error).message}` }
+  }
+}
+
+/* ---------------- saved chat images (web edition, 2026-10-27) ---------------- */
+
+export interface SavedImageRef {
+  id: string
+  w: number
+  h: number
+}
+export type SaveImagesResult =
+  | { ok: true; images: SavedImageRef[] }
+  /** saving is not switched on here: the picture is only used for this question */
+  | { ok: false; unavailable: true; reason: string }
+  | { ok: false; unavailable?: false; reason: string }
+
+/** Store the compressed copies of the pictures of one message (before the question is sent). */
+export async function aiSaveImages(conv: string, dataUris: string[]): Promise<SaveImagesResult> {
+  try {
+    const res = await fetch('/api/ai/images', {
+      method: 'POST',
+      headers: { ...WEB_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conv, images: dataUris }),
+    })
+    const d = (await res.json().catch(() => null)) as {
+      ok?: boolean
+      images?: SavedImageRef[]
+      error?: string
+      reason?: string
+    } | null
+    if (res.ok && d?.ok && Array.isArray(d.images)) return { ok: true, images: d.images }
+    if (res.status === 503 && d?.error === 'media_unavailable')
+      return { ok: false, unavailable: true, reason: d.reason || '图片保存功能未开通' }
+    noteForbidden(res.status, d)
+    if (res.status === 401) return { ok: false, reason: WEB_SESSION_EXPIRED }
+    return { ok: false, reason: d?.reason || `图片保存失败（${res.status}）` }
+  } catch {
+    return { ok: false, reason: '网络异常，图片未能保存，问题没有发送' }
+  }
+}
+
+const imageCache = new Map<string, Promise<string | null>>()
+/** A saved picture of this account as an object URL (null = gone / not allowed). Cached per page. */
+export function aiImageUrl(id: string): Promise<string | null> {
+  let p = imageCache.get(id)
+  if (!p) {
+    p = (async () => {
+      try {
+        const res = await fetch('/api/ai/images/' + encodeURIComponent(id), { headers: WEB_HEADERS })
+        if (!res.ok) {
+          imageCache.delete(id)
+          return null
+        }
+        return URL.createObjectURL(await res.blob())
+      } catch {
+        imageCache.delete(id)
+        return null
+      }
+    })()
+    imageCache.set(id, p)
+  }
+  return p
+}
+/** the same picture as a data URI (to give an earlier conversation's images to a follow-up question) */
+export async function aiImageDataUri(id: string): Promise<string | null> {
+  const u = await aiImageUrl(id)
+  if (!u) return null
+  try {
+    const b = await (await fetch(u)).blob()
+    return await new Promise<string>((res, rej) => {
+      const r = new FileReader()
+      r.onload = () => res(String(r.result))
+      r.onerror = () => rej(r.error)
+      r.readAsDataURL(b)
+    })
+  } catch {
+    return null
   }
 }

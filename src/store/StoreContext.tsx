@@ -5,6 +5,24 @@ import { freshRecord, applyAttempt } from '../lib/scheduler'
 import { scoreAnswer, isAnswerBlank } from '../lib/scoring'
 import { submitMockRun as submitMockRunTx, saveAiReviewWithAttempt, recordAttempt } from '../lib/session'
 import type { Question } from '../lib/types'
+import { questionById } from '../lib/bank'
+import { IS_WEB_EDITION } from '../lib/edition'
+
+/**
+ * Rows in this browser's IndexedDB whose question ids are not in the installed
+ * bank (e.g. left over from the 17-question demo that was served at the same
+ * address before the full bank). They are never deleted; the web edition just
+ * keeps them out of every statistic and list, and counts them here so the UI
+ * can say so honestly.
+ */
+export interface LegacyCounts {
+  records: number
+  history: number
+  mocks: number
+}
+
+const inBank = (qid: string) => questionById.has(qid)
+const mockInBank = (m: MockRun) => Object.keys(m.submissions ?? {}).every(inBank)
 
 export interface SubmitOutcome {
   isCorrect: boolean | null
@@ -16,13 +34,17 @@ export interface SubmitOptions {
   skipPersistence?: boolean
 }
 
-interface StoreValue {
+export interface StoreValue {
   ready: boolean
   records: Map<string, QRecord>
   history: HistoryEntry[]
   mocks: MockRun[]
   aiReviews: AiReview[]
   settings: AppSettings
+  /** Unfiltered rows exactly as stored — for backup export only. */
+  raw: { records: Map<string, QRecord>; history: HistoryEntry[]; mocks: MockRun[] }
+  /** Rows kept out of statistics because their questions are not in the current bank. */
+  legacy: LegacyCounts
   submitAnswer: (
     q: Question,
     answer: string | null,
@@ -75,11 +97,13 @@ interface StoreValue {
     aiReviews: AiReview[]
     settingsAction: 'keep' | 'set' | 'reset'
     settings: AppSettings | null
+    /** web edition: merge = add the backup's rows; replace = start over from the backup */
+    mode?: 'merge' | 'replace'
   }) => Promise<{ settings: AppSettings }>
   clearWrong: (qids: string[]) => Promise<void>
 }
 
-const StoreContext = createContext<StoreValue | null>(null)
+export const StoreContext = createContext<StoreValue | null>(null)
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
@@ -181,12 +205,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [refresh],
   )
 
+  // Web edition: statistics and lists only ever see rows of the installed bank.
+  const scoped = useMemo(() => {
+    if (!IS_WEB_EDITION) {
+      return { records, history, mocks, legacy: { records: 0, history: 0, mocks: 0 } }
+    }
+    const recs = new Map<string, QRecord>()
+    for (const [k, r] of records) if (inBank(k)) recs.set(k, r)
+    const hist = history.filter((h) => inBank(h.qid))
+    const mks = mocks.filter(mockInBank)
+    return {
+      records: recs.size === records.size ? records : recs,
+      history: hist.length === history.length ? history : hist,
+      mocks: mks.length === mocks.length ? mocks : mks,
+      legacy: {
+        records: records.size - recs.size,
+        history: history.length - hist.length,
+        mocks: mocks.length - mks.length,
+      },
+    }
+  }, [records, history, mocks])
+
   const value = useMemo<StoreValue>(
     () => ({
       ready,
-      records,
-      history,
-      mocks,
+      records: scoped.records,
+      history: scoped.history,
+      mocks: scoped.mocks,
+      raw: { records, history, mocks },
+      legacy: scoped.legacy,
       aiReviews,
       settings,
       submitAnswer,
@@ -295,7 +342,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await refresh()
       },
     }),
-    [ready, records, history, mocks, aiReviews, settings, submitAnswer, saveSubjectiveAttempt, getRecord, refresh],
+    [
+      ready,
+      records,
+      history,
+      mocks,
+      scoped,
+      aiReviews,
+      settings,
+      submitAnswer,
+      saveSubjectiveAttempt,
+      getRecord,
+      refresh,
+    ],
   )
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>

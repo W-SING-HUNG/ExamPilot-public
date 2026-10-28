@@ -241,6 +241,43 @@ export function rankWeakPoints(chapters: ChapterStat[]): WeakPoint[] {
   return [...weak, ...uncovered].slice(0, WEAK_POINT_LIMIT)
 }
 
+/**
+ * The two kinds of chapter gap, kept apart for display.
+ *
+ *  - `weak`: chapters WITH practice data whose coverage or correct rate is short,
+ *    ranked weakest first (same scoring as `rankWeakPoints`, uncapped).
+ *  - `unstarted`: formal chapters with no objective attempt at all. They have no
+ *    measured performance, so they are "not learned yet", never "weak".
+ *
+ * Chapters outside `formalChapters` (e.g. the subjective-only 全册 group, which
+ * objective practice can never cover) are left out of `unstarted`.
+ */
+export function chapterGaps(
+  chapters: ChapterStat[],
+  formalChapters: string[],
+): { weak: WeakPoint[]; unstarted: ChapterStat[] } {
+  const formal = new Set(formalChapters)
+  const weak = rankWeakPoints(chapters.filter((c) => c.attempted > 0))
+  const weakAll = chapters.filter((c) => c.attempted > 0 && !isConsolidated(c)).length
+  // rankWeakPoints caps its list; recompute uncapped when there are more weak chapters.
+  const weakList =
+    weakAll > weak.length
+      ? chapters
+          .filter((c) => c.attempted > 0 && !isConsolidated(c))
+          .map((c) => ({
+            chapter: c.chapter,
+            score: Math.round((c.coverage * 0.4 + c.correctRate * 0.6) * 100),
+            detail: weakDetail(c),
+            kind: 'weak' as const,
+            n: c.objectiveTotal,
+          }))
+          .sort((a, b) => a.score - b.score || b.n - a.n)
+          .map(({ chapter, score, detail, kind }) => ({ chapter, score, detail, kind }))
+      : weak
+  const unstarted = chapters.filter((c) => c.attempted === 0 && formal.has(c.chapter) && c.objectiveTotal > 0)
+  return { weak: weakList, unstarted }
+}
+
 export function correctRateOfRecords(recs: QRecord[]): number {
   const tt = recs.reduce((s, r) => s + r.correctCount + r.wrongCount, 0)
   if (tt === 0) return 0

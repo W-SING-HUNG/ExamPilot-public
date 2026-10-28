@@ -46,6 +46,19 @@ const FRAG = {
   validationClaims: ['独立' + '验收', '独立' + '审查', 'independently ' + 'validated', 'independent ' + 'review'],
 }
 
+/**
+ * Identifier shapes that belong in the environment, not in the source: Cloudflare
+ * account ids, D1 database uuids, Access AUD tags and worker host names.
+ *
+ * This is a structural pattern only. The gate deliberately keeps no record of any
+ * specific resource — not the values and not a hash of them. A digest of a
+ * low-entropy identifier such as a 32-hex account id is reversible by enumeration,
+ * so a table of digests is a fingerprint of the real infrastructure and does not
+ * belong in a public repository either.
+ */
+const INFRA_ID_RE =
+  /\b[0-9a-f]{32}\b|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b[a-z0-9][a-z0-9.-]*\.(?:workers\.dev|cloudflareaccess\.com)\b|\b[a-z0-9][a-z0-9-]*\.(?:space|site)\b/i
+
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const alt = (arr, flags = '') => new RegExp(`(${arr.map(esc).join('|')})`, flags)
 
@@ -167,6 +180,36 @@ function capturedSegment(re, line) {
  *   allow: predicate (file, line) => true to suppress a legitimate match
  */
 export const RULES = [
+  // ---- INTERNAL: private development tooling -----------------------------
+  {
+    id: 'private-tool-name',
+    severity: 'INTERNAL',
+    // Assembled from fragments so this file does not match its own rule. Neither
+    // name has a product meaning here; both identify the private development
+    // environment this project was built in.
+    re: new RegExp(['Ha' + 'rk', 'Work' + 'Buddy'].join('|')),
+    desc: 'private development tool name',
+  },
+
+  {
+    // Anything identifier-shaped in deployment or configuration code is worth a
+    // human look even when it is not on the known list: a live account id, a D1
+    // uuid or an Access AUD tag belongs in the environment, not in the source.
+    id: 'cloud-resource-id',
+    severity: 'REVIEW',
+    re: INFRA_ID_RE,
+    desc: 'identifier-shaped value in configuration — confirm it is a placeholder',
+    allow: (f) => !/(^|\/)(tools\/web\/(deploy|ai-)|wrangler|\.github\/)/.test(f),
+  },
+  {
+    // The production host names are public knowledge, but a template or a test
+    // that hard-codes them hides the fact that they are operator settings.
+    id: 'production-domain',
+    severity: 'REVIEW',
+    re: /\b(?:[a-z0-9-]+\.)*getexampilot\.site\b/i,
+    desc: 'production host name — confirm it belongs in a template, not a default',
+  },
+
   // ---- SECRET -------------------------------------------------------------
   {
     id: 'credential-literal',
@@ -423,9 +466,17 @@ export const FORBIDDEN_PATHS = [
  * policy vocabulary, or are the fixture that proves a rule fires. Never used to
  * silence credentials; a regression test asserts SECRET rules still fire inside
  * allowlisted files.
+ *
+ * This file needs the vocabulary exemptions: it has to spell out the rule ids and
+ * name the tool vocabulary it detects, otherwise the rule table cannot exist. The
+ * exemption covers only those two rule ids, never SECRET rules, and the regression
+ * test above keeps that promise honest.
  */
 export const FILE_ALLOW = [
-  { file: /^tools\/public-info-check\.mjs$/, rules: ['private-collaboration-record', 'process-disclosure'] },
+  {
+    file: /^tools\/public-info-check\.mjs$/,
+    rules: ['private-collaboration-record', 'process-disclosure', 'private-tool-name'],
+  },
   { file: /^docs\/information-governance\.md$/, rules: ['process-disclosure', 'validation-claim'] },
 ]
 
@@ -464,16 +515,23 @@ export const EXACT_LINE_EXEMPTIONS = [
   {
     rule: 'process-disclosure',
     file: /^src\/components\/FloatingAiAssistant\.tsx$/,
-    line: '<button className="ai-win-btn" onClick={clearHistory} title="清空对话记录">',
+    line: "title={web ? '删除本对话（所有设备同步删除）' : '清空对话记录'}",
     reason:
-      'UI button tooltip「清空对话记录」 = "clear conversation history". End-user affordance, not a stored transcript.',
+      'Tooltip on the assistant conversation-history control. End-user affordance ("clear conversation history"), not a stored transcript or an author prompt.',
   },
   {
     rule: 'process-disclosure',
-    commit: '909dcab765d9a9c3e77be152a03548e2aa3902b6',
-    line: '行为不变：正则匹配结果、AI 提示词、消息裁剪、上下文传递、',
+    file: /^tests\/web-ai\/contract\.test\.ts$/,
+    line: "{ role: 'system', content: '你是……专业课程助教（客户端首题提示词）' },",
     reason:
-      'Commit body enumerating what did NOT change; 「AI 提示词」 refers to the shipped system prompt, not an author prompt library.',
+      'Test fixture that reproduces the shipped system prompt of the assistant. This is a product asset under test, not a private prompt library or internal instruction.',
+  },
+  {
+    rule: 'process-disclosure',
+    file: /^src\/components\/FloatingAiAssistant\.tsx$/,
+    line: '<button className="ai-win-btn" onClick={clearHistory} title="清空对话记录">',
+    reason:
+      'The same UI affordance as it appears in the previously published version of this component. Already public as a product string; not a stored transcript. Kept so the historical blob does not read as a new disclosure.',
   },
 ]
 

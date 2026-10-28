@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Question } from '../lib/types'
 import { QuestionCard } from './QuestionCard'
 import { AiGradePanel } from './AiQaPanel'
+import { useAiUsable } from '../lib/ai-access'
 import { Bar, Tag } from './ui'
 import { useStore } from '../store/StoreContext'
 import { summarise, type Outcome, type SessionResult } from '../lib/session-outcome'
@@ -63,6 +64,8 @@ export function QuestionRunner({
   restore = null,
   contextLabel,
 }: Props) {
+  // AI entry points render only when this account may use AI (always on desktop).
+  const aiOn = useAiUsable()
   const { submitAnswer, saveSubjectiveAttempt } = useStore()
 
   const [idx, setIdx] = useState(() => Math.min(restore?.idx ?? 0, Math.max(0, questions.length - 1)))
@@ -125,10 +128,10 @@ export function QuestionRunner({
       skipped,
       durationMs: Date.now() - startedAt.current,
     })
-    clearDraft(mode)
+    clearDraft(mode, sessionId)
     setActiveSession(null)
     onFinish?.(result)
-  }, [mode, onFinish, outcomes, questions.length, skipped])
+  }, [mode, onFinish, outcomes, questions.length, skipped, sessionId])
 
   /* ---------- per-question submit ------------------------------------- */
 
@@ -274,7 +277,7 @@ export function QuestionRunner({
         />
       </div>
 
-      {revealed && isSubjective && (
+      {revealed && isSubjective && aiOn && (
         <div style={{ marginTop: 12 }}>
           <AiGradePanel q={q} userAnswer={value ?? ''} sessionId={sessionId} />
         </div>
@@ -294,7 +297,11 @@ export function QuestionRunner({
               跳过本题
             </button>
             <span className="muted-2">
-              {isSubjective ? '主观题不自动评分，提交后可使用 AI 参考评阅' : '选择答案后提交，立即查看结果'}
+              {isSubjective
+                ? aiOn
+                  ? '主观题不自动评分，提交后可使用 AI 参考评阅'
+                  : '主观题不自动评分，提交后对照答题结构自评'
+                : '选择答案后提交，立即查看结果'}
             </span>
           </>
         ) : (

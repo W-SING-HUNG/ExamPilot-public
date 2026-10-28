@@ -1,10 +1,15 @@
 import { useMemo, useState } from 'react'
+import { useAiUsable } from '../lib/ai-access'
 import { useStore } from '../store/StoreContext'
 import { allQuestions, objectiveQuestions, subjectiveQuestions, chapterOrder, TYPE_LABEL } from '../lib/bank'
-import { computeDiagnosis, groupActivity } from '../lib/analysis'
+import { computeDiagnosis, groupActivity, chapterGaps } from '../lib/analysis'
 import { isDue } from '../lib/scheduler'
 import { Bar, CardPad, PageHead, Stat, Tag, Empty, Reveal, SkStats, useDeferred } from '../components/ui'
+import { useAiAccess, tierOf } from '../lib/ai-access'
+import { IS_WEB_EDITION } from '../lib/edition'
+import { openFloatingAiConversation } from '../components/FloatingAiAssistant'
 import type { RouteName } from '../store/router'
+import { WebDashboard } from '../web/Dashboard'
 
 /** A labelled progress row, used three times on the overview. */
 function ProgressLine({
@@ -78,6 +83,8 @@ export function Home({
   const masteredRatio = objectiveQuestions.length ? diag.overall.ourMastered / objectiveQuestions.length : 0
   const coverage = diag.overall.coverage
   const showSkeleton = useDeferred(!ready)
+  const tier = tierOf(useAiAccess())
+  const isPro = IS_WEB_EDITION && tier === 'pro'
 
   if (showSkeleton) {
     return (
@@ -104,39 +111,61 @@ export function Home({
 
   return (
     <>
-      <PageHead
-        title="学习总览"
-        desc="以 100 分为目标：题库全覆盖、错题清零、主观题有结构。先看数据，再练薄弱环节。"
-        extra={
-          <div className="btn-row">
-            <button className="btn btn-primary" onClick={() => nav('plan')}>
-              开始今日复习
-            </button>
-            <button className="btn" onClick={() => nav('practice')}>
-              自由刷题
-            </button>
-          </div>
-        }
-      />
+      {isPro ? (
+        <ProHero
+          nav={nav}
+          dueCount={dueCount}
+          todayCount={todayCount}
+          coverage={coverage}
+          masteredRatio={masteredRatio}
+          attempted={diag.overall.attempted}
+          mastered={diag.overall.ourMastered}
+          correctRate={diag.overall.correctRate}
+          correct={diag.overall.correct}
+          wrong={diag.overall.wrong}
+        />
+      ) : (
+        <PageHead
+          title="学习总览"
+          desc="以 100 分为目标：题库全覆盖、错题清零、主观题有结构。先看数据，再练薄弱环节。"
+          extra={
+            <div className="btn-row">
+              <button className="btn btn-primary" onClick={() => nav('plan')}>
+                开始今日复习
+              </button>
+              <button className="btn" onClick={() => nav('practice')}>
+                自由刷题
+              </button>
+              {IS_WEB_EDITION && (
+                <button className="btn" onClick={() => nav('wrong')}>
+                  错题本
+                </button>
+              )}
+            </div>
+          }
+        />
+      )}
 
       {/* Two views of the same page. Not stacked sections: only one is mounted. */}
-      <div className="view-switch" role="tablist" aria-label="学习总览视图">
-        <button
-          role="tab"
-          aria-selected={view === 'overview'}
-          className={`btn btn-sm ${view === 'overview' ? 'btn-primary' : ''}`}
-          onClick={() => void nav('home')}
-        >
-          学习概览
-        </button>
-        <button
-          role="tab"
-          aria-selected={view === 'detail'}
-          className={`btn btn-sm ${view === 'detail' ? 'btn-primary' : ''}`}
-          onClick={() => void nav('home', { view: 'detail' })}
-        >
-          详细诊断
-        </button>
+      <div className="view-switch">
+        <div className="btn-row" role="tablist" aria-label="学习总览视图">
+          <button
+            role="tab"
+            aria-selected={view === 'overview'}
+            className={`btn btn-sm ${view === 'overview' ? 'btn-primary' : ''}`}
+            onClick={() => void nav('home')}
+          >
+            学习概览
+          </button>
+          <button
+            role="tab"
+            aria-selected={view === 'detail'}
+            className={`btn btn-sm ${view === 'detail' ? 'btn-primary' : ''}`}
+            onClick={() => void nav('home', { view: 'detail' })}
+          >
+            详细诊断
+          </button>
+        </div>
         <button className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => void nav('history')}>
           查看练习历史
         </button>
@@ -154,6 +183,7 @@ export function Home({
           activity={activity}
           historyLength={history.length}
           mocks={mocks}
+          ledgerAbove={isPro}
         />
       ) : (
         <DetailView diag={diag} nav={nav} />
@@ -177,6 +207,7 @@ function OverviewView({
   activity,
   historyLength,
   mocks,
+  ledgerAbove,
 }: {
   nav: (r: RouteName, p?: Record<string, string>) => void | Promise<void>
   dueCount: number
@@ -188,32 +219,39 @@ function OverviewView({
   activity: ReturnType<typeof groupActivity>
   historyLength: number
   mocks: { graded: boolean }[]
+  /** Pro shows these four figures in its header ledger; don't repeat them here */
+  ledgerAbove?: boolean
 }) {
   return (
     <>
       <Reveal>
-        <div className="grid grid-4" style={{ marginBottom: 14 }}>
-          <Stat
-            value={`${Math.round(coverage * 100)}%`}
-            label="题库覆盖率"
-            hint={`${diag.overall.attempted} / ${objectiveQuestions.length} 道已练`}
-            tone="accent"
-          />
-          <Stat
-            value={diag.overall.correctRate ? `${Math.round(diag.overall.correctRate * 100)}%` : '—'}
-            label="客观题正确率"
-            hint={`对 ${diag.overall.correct} · 错 ${diag.overall.wrong}`}
-          />
-          <Stat value={diag.overall.ourMastered} label="已掌握题目" hint={`目标 ${objectiveQuestions.length}`} />
-          <Stat
-            value={dueCount}
-            label="今日待复习"
-            hint={`今日已答 ${todayCount} 题`}
-            tone={dueCount > 0 ? 'warn' : undefined}
-          />
-        </div>
+        {!ledgerAbove && (
+          <div className="grid grid-4" style={{ marginBottom: 14 }}>
+            <Stat
+              featured
+              value={`${Math.round(coverage * 100)}%`}
+              label="题库覆盖率"
+              hint={`${diag.overall.attempted} / ${objectiveQuestions.length} 道已练`}
+              tone="accent"
+            />
+            <Stat
+              value={diag.overall.correctRate ? `${Math.round(diag.overall.correctRate * 100)}%` : '—'}
+              label="客观题正确率"
+              hint={`对 ${diag.overall.correct} · 错 ${diag.overall.wrong}`}
+            />
+            <Stat value={diag.overall.ourMastered} label="已掌握题目" hint={`目标 ${objectiveQuestions.length}`} />
+            <Stat
+              value={dueCount}
+              label="今日待复习"
+              hint={`今日已答 ${todayCount} 题`}
+              tone={dueCount > 0 ? 'warn' : undefined}
+            />
+          </div>
+        )}
 
-        <div className="grid grid-2">
+        {IS_WEB_EDITION && <WebDashboard diag={diag} nav={nav} dueCount={dueCount} />}
+
+        <div className={IS_WEB_EDITION ? 'grid' : 'grid grid-2'} style={IS_WEB_EDITION ? { marginTop: 14 } : undefined}>
           <CardPad>
             <div className="card-title">复习完成度（题库覆盖）</div>
             <div className="col" style={{ gap: 14 }}>
@@ -253,87 +291,134 @@ function OverviewView({
             </div>
           </CardPad>
 
-          <CardPad>
-            <div className="card-title">近 7 天学习记录</div>
-            {todayCount === 0 && historyLength === 0 && mocks.length === 0 ? (
-              <Empty text="还没有练习记录，开始第一组练习吧。">
-                <button className="btn btn-primary" onClick={() => nav('plan')}>
-                  生成复习计划
-                </button>
-              </Empty>
-            ) : (
-              <>
-                {historyLength === 0 ? (
-                  <div className="muted" style={{ marginBottom: 8 }}>
-                    还没有练习题目的记录；已有 {mocks.length} 场模拟考试。
-                  </div>
-                ) : (
-                  <div className="col" style={{ gap: 10 }}>
-                    {activity.map((d) => (
-                      <div key={d.date} className="row-between">
-                        <span className="muted" style={{ width: 76, fontFamily: 'var(--mono)', fontSize: 12 }}>
-                          {d.date.slice(5)}
-                        </span>
-                        <div style={{ flex: 1, margin: '0 12px' }}>
-                          <Bar value={d.count / Math.max(20, ...activity.map((x) => x.count), 1)} tone="accent" />
+          {!IS_WEB_EDITION && (
+            <CardPad>
+              <div className="card-title">近 7 天学习记录</div>
+              {todayCount === 0 && historyLength === 0 && mocks.length === 0 ? (
+                <Empty text="还没有练习记录，开始第一组练习吧。">
+                  <button className="btn btn-primary" onClick={() => nav('plan')}>
+                    生成复习计划
+                  </button>
+                </Empty>
+              ) : (
+                <>
+                  {historyLength === 0 ? (
+                    <div className="muted" style={{ marginBottom: 8 }}>
+                      还没有练习题目的记录；已有 {mocks.length} 场模拟考试。
+                    </div>
+                  ) : (
+                    <div className="col" style={{ gap: 10 }}>
+                      {activity.map((d) => (
+                        <div key={d.date} className="row-between">
+                          <span className="muted" style={{ width: 76, fontFamily: 'var(--mono)', fontSize: 12 }}>
+                            {d.date.slice(5)}
+                          </span>
+                          <div style={{ flex: 1, margin: '0 12px' }}>
+                            <Bar value={d.count / Math.max(20, ...activity.map((x) => x.count), 1)} tone="accent" />
+                          </div>
+                          <span className="muted-2" style={{ width: 56, textAlign: 'right' }}>
+                            {d.count} 题
+                          </span>
                         </div>
-                        <span className="muted-2" style={{ width: 56, textAlign: 'right' }}>
-                          {d.count} 题
-                        </span>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+                  )}
+                  <div className="divider" />
+                  <div className="row-between">
+                    <span className="muted">已完成模拟考试</span>
+                    <span className="row" style={{ gap: 8 }}>
+                      <b style={{ fontVariantNumeric: 'tabular-nums' }}>{mocks.filter((m) => m.graded).length}</b>
+                      <span className="muted-2">场</span>
+                      {mocks.length > 0 && (
+                        <button className="btn btn-sm" onClick={() => nav('mock')}>
+                          查看模拟成绩
+                        </button>
+                      )}
+                    </span>
                   </div>
-                )}
-                <div className="divider" />
-                <div className="row-between">
-                  <span className="muted">已完成模拟考试</span>
-                  <span className="row" style={{ gap: 8 }}>
-                    <b style={{ fontVariantNumeric: 'tabular-nums' }}>{mocks.filter((m) => m.graded).length}</b>
-                    <span className="muted-2">场</span>
-                    {mocks.length > 0 && (
-                      <button className="btn btn-sm" onClick={() => nav('mock')}>
-                        查看模拟成绩
-                      </button>
-                    )}
-                  </span>
-                </div>
-              </>
-            )}
-          </CardPad>
+                </>
+              )}
+            </CardPad>
+          )}
         </div>
       </Reveal>
 
-      {diag.weakPoints.length > 0 && (
-        <CardPad style={{ marginTop: 14 }}>
-          <div className="row-between" style={{ marginBottom: 12 }}>
-            <div className="card-title" style={{ margin: 0 }}>
-              需优先处理的薄弱环节
-            </div>
-            <button className="btn btn-sm" onClick={() => void nav('home', { view: 'detail' })}>
-              查看完整诊断
-            </button>
-          </div>
-          <div className="grid grid-3">
-            {diag.weakPoints.slice(0, 3).map((w) => (
-              <div key={w.chapter} className="chapter-item" style={{ cursor: 'default' }}>
-                <div style={{ minWidth: 0 }}>
-                  <div className="ci-name">{w.chapter}</div>
-                  <div className="ci-sub">{w.detail}</div>
-                </div>
-                <Tag tone={w.kind === 'uncovered' ? 'warn' : 'bad'}>{w.kind === 'uncovered' ? '未覆盖' : '待清除'}</Tag>
+      {(() => {
+        // Real weak chapters (measured, attempted) and not-yet-started chapters are
+        // different things: with no practice at all there is nothing "weak" yet.
+        const gaps = chapterGaps(diag.chapters, chapterOrder)
+        const showWeak = gaps.weak.length > 0
+        if (!showWeak && gaps.unstarted.length === 0) return null
+        return (
+          <CardPad style={{ marginTop: 14 }}>
+            <div className="row-between" style={{ marginBottom: 12 }}>
+              <div className="card-title" style={{ margin: 0 }}>
+                {showWeak
+                  ? `需优先处理的薄弱章节（${gaps.weak.length} 章）`
+                  : `尚未开始学习的章节（${gaps.unstarted.length} 章）`}
               </div>
-            ))}
-          </div>
-        </CardPad>
-      )}
+              <button className="btn btn-sm" onClick={() => void nav('home', { view: 'detail' })}>
+                查看完整诊断
+              </button>
+            </div>
+            {!showWeak && (
+              <div className="muted" style={{ marginBottom: 12 }}>
+                {diag.overall.attempted === 0
+                  ? '还没有练习数据，因此暂无薄弱章节。先从以下章节开始练习，有了作答记录后才会诊断薄弱点。'
+                  : '已练章节暂未发现薄弱点。以下章节尚未开始练习（未学习不等于薄弱）。'}
+              </div>
+            )}
+            <div className="grid grid-3">
+              {showWeak
+                ? gaps.weak.slice(0, 3).map((w) => (
+                    <div key={w.chapter} className="chapter-item" style={{ cursor: 'default' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div className="ci-name">{w.chapter}</div>
+                        <div className="ci-sub">{w.detail}</div>
+                      </div>
+                      <Tag tone="bad">待清除</Tag>
+                    </div>
+                  ))
+                : gaps.unstarted.slice(0, 3).map((c) => (
+                    <div key={c.chapter} className="chapter-item" style={{ cursor: 'default' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div className="ci-name">{c.chapter}</div>
+                        <div className="ci-sub">{c.objectiveTotal} 道客观题未练</div>
+                      </div>
+                      <Tag tone="warn">未学习</Tag>
+                    </div>
+                  ))}
+            </div>
+            {showWeak && gaps.unstarted.length > 0 && (
+              <div className="muted-2" style={{ marginTop: 10 }}>
+                另有 {gaps.unstarted.length} 章尚未开始学习（不计入薄弱章节）。
+              </div>
+            )}
+          </CardPad>
+        )
+      })()}
 
       <CardPad style={{ marginTop: 14 }}>
-        <div className="card-title">题库信息</div>
-        <div className="muted">
-          共 {allQuestions.length} 题：单选 {diag.types[0].total} · 多选 {diag.types[1].total} · 判断{' '}
-          {diag.types[2].total} · 简答 {diag.types[3].total} · 材料分析 {diag.types[4].total}；{chapterOrder.length}{' '}
-          个章节。数据来自指定 PDF，原始题干/选项/答案均未改动。
-        </div>
+        {IS_WEB_EDITION ? (
+          <details>
+            <summary className="card-title" style={{ cursor: 'pointer' }}>
+              题库信息
+            </summary>
+            <div className="muted">
+              共 {allQuestions.length} 题，{chapterOrder.length} 个章节。数据来自指定
+              PDF，原始题干/选项/答案均未改动。题库指纹等版本信息在「设置 → 高级与关于」。
+            </div>
+          </details>
+        ) : (
+          <>
+            <div className="card-title">题库信息</div>
+            <div className="muted">
+              共 {allQuestions.length} 题：单选 {diag.types[0].total} · 多选 {diag.types[1].total} · 判断{' '}
+              {diag.types[2].total} · 简答 {diag.types[3].total} · 材料分析 {diag.types[4].total}；{chapterOrder.length}{' '}
+              个章节。数据来自指定 PDF，原始题干/选项/答案均未改动。
+            </div>
+          </>
+        )}
       </CardPad>
     </>
   )
@@ -347,7 +432,7 @@ type WeakPointKind = 'weak' | 'uncovered'
 
 const KIND_LABEL: Record<WeakPointKind, { text: string; tone: 'bad' | 'warn' }> = {
   weak: { text: '待清除', tone: 'bad' },
-  uncovered: { text: '未覆盖', tone: 'warn' },
+  uncovered: { text: '未学习', tone: 'warn' },
 }
 
 function DetailView({
@@ -357,6 +442,8 @@ function DetailView({
   diag: ReturnType<typeof computeDiagnosis>
   nav: (r: RouteName, p?: Record<string, string>) => void | Promise<void>
 }) {
+  const aiOn = useAiUsable()
+  const gaps = useMemo(() => chapterGaps(diag.chapters, chapterOrder), [diag])
   const { records, history } = useStore()
   const activity = useMemo(() => groupActivity(history, 30), [history])
   const [tab, setTab] = useState<'chapter' | 'type' | 'activity'>('chapter')
@@ -511,7 +598,9 @@ function DetailView({
                       {t.correct + t.wrong
                         ? Math.round(t.correctRate * 100) + '%'
                         : t.type === 'short' || t.type === 'material'
-                          ? 'AI 参考评阅'
+                          ? aiOn
+                            ? 'AI 参考评阅'
+                            : '自评'
                           : '—'}
                     </td>
                     <td>{t.mastered}</td>
@@ -552,27 +641,30 @@ function DetailView({
       </CardPad>
 
       <CardPad style={{ marginTop: 14 }}>
-        <div className="card-title">薄弱点排序（基于真实数据）</div>
-        {diag.weakPoints.length === 0 ? (
-          <Empty text="暂无足够数据生成薄弱点排序，先完成一些练习。" />
+        <div className="card-title">薄弱章节（基于真实作答数据）</div>
+        {gaps.weak.length === 0 ? (
+          <Empty
+            text={
+              diag.overall.attempted === 0
+                ? '还没有练习数据，暂无薄弱章节。完成练习后，覆盖率或正确率不足的已练章节会出现在这里。'
+                : '已练章节暂未发现薄弱点。'
+            }
+          />
         ) : (
           <>
             <div className="muted" style={{ marginBottom: 10 }}>
-              排序分两类，互不混排：「待清除」为已练但覆盖率或正确率不足的章节，按掌握指数升序在前；「未覆盖」为尚未开始练习的章节，
-              按未练题量降序补足剩余名额。未覆盖章节没有正确率数据，因此不参与掌握指数比较。
+              只统计已经练过的章节：覆盖率或正确率不足即列为「待清除」，按掌握指数从低到高排序。未开始的章节没有作答数据，单独列在下方，不算薄弱。
             </div>
             <div className="grid grid-2">
-              {diag.weakPoints.map((w, i) => (
+              {gaps.weak.map((w, i) => (
                 <div key={w.chapter} className="card card-pad row-between" style={{ boxShadow: 'none' }}>
                   <div>
                     <div className="row" style={{ gap: 8 }}>
                       <b>
                         {i + 1}. {w.chapter}
                       </b>
-                      {w.kind === 'weak' ? (
-                        <Tag tone={w.score < 50 ? 'bad' : w.score < 70 ? 'warn' : 'ok'}>掌握指数 {w.score}</Tag>
-                      ) : null}
-                      <Tag tone={KIND_LABEL[w.kind].tone}>{KIND_LABEL[w.kind].text}</Tag>
+                      <Tag tone={w.score < 50 ? 'bad' : w.score < 70 ? 'warn' : 'ok'}>掌握指数 {w.score}</Tag>
+                      <Tag tone={KIND_LABEL.weak.tone}>{KIND_LABEL.weak.text}</Tag>
                     </div>
                     <div className="muted-2" style={{ marginTop: 4 }}>
                       {w.detail}
@@ -585,6 +677,33 @@ function DetailView({
                     练习
                   </button>
                 </div>
+              ))}
+            </div>
+          </>
+        )}
+      </CardPad>
+
+      <CardPad style={{ marginTop: 14 }}>
+        <div className="card-title">
+          未学习章节（{gaps.unstarted.length} / {chapterOrder.length} 章）
+        </div>
+        {gaps.unstarted.length === 0 ? (
+          <Empty text={`全部 ${chapterOrder.length} 个章节都已开始练习。`} />
+        ) : (
+          <>
+            <div className="muted" style={{ marginBottom: 10 }}>
+              这些章节还没有任何客观题作答记录，属于覆盖缺口，不是薄弱点。点任一章节直接开始练习。
+            </div>
+            <div className="chapter-grid">
+              {gaps.unstarted.map((c) => (
+                <button
+                  key={c.chapter}
+                  className="btn btn-sm chapter-chip"
+                  onClick={() => void nav('practice', { mode: 'chapter', chapter: c.chapter })}
+                >
+                  <span>{c.chapter}</span>
+                  <span className="chapter-chip-n">{c.objectiveTotal} 题</span>
+                </button>
               ))}
             </div>
           </>
@@ -661,9 +780,9 @@ function DetailView({
               nav={nav}
             />
           )}
-          {diag.weakPoints.length > 0 && (
+          {gaps.weak.length > 0 && (
             <Advice
-              text={`优先补强：${diag.weakPoints
+              text={`优先补强：${gaps.weak
                 .slice(0, 3)
                 .map((w) => w.chapter)
                 .join('、')}。`}
@@ -671,7 +790,18 @@ function DetailView({
               nav={nav}
             />
           )}
-          {diag.weakPoints.length === 0 && diag.overall.coverage > 0.9 && (
+          {gaps.weak.length === 0 && gaps.unstarted.length > 0 && (
+            <Advice
+              text={`还有 ${gaps.unstarted.length} 章未开始学习，建议从「${gaps.unstarted[0].chapter}」开始按章覆盖。`}
+              action={{
+                label: '按章练习',
+                route: 'practice',
+                params: { mode: 'chapter', chapter: gaps.unstarted[0].chapter },
+              }}
+              nav={nav}
+            />
+          )}
+          {gaps.weak.length === 0 && diag.overall.coverage > 0.9 && (
             <Advice
               text="覆盖良好，可进入全真模拟考试检验整体表现与时间分配。"
               action={{ label: '全真模拟', route: 'mock' }}
@@ -702,5 +832,101 @@ function Advice({
         {action.label}
       </button>
     </div>
+  )
+}
+
+/* ============================================================================
+ * Pro hero — identity, greeting by local time, real progress, next step.
+ * Only for accounts the server confirmed as Pro. Every number is the same value
+ * the stat cards below use (same computations, passed in).
+ * ========================================================================== */
+
+function greeting(d = new Date()): string {
+  const h = d.getHours()
+  if (h >= 5 && h < 11) return '早上好'
+  if (h >= 11 && h < 13) return '中午好'
+  if (h >= 13 && h < 18) return '下午好'
+  if (h >= 18 && h < 23) return '晚上好'
+  return '夜深了，注意休息'
+}
+
+function ProHero({
+  nav,
+  dueCount,
+  todayCount,
+  coverage,
+  attempted,
+  mastered,
+  correct,
+  wrong,
+  correctRate,
+}: {
+  nav: (r: RouteName, p?: Record<string, string>) => void | Promise<void>
+  dueCount: number
+  todayCount: number
+  coverage: number
+  masteredRatio: number
+  attempted: number
+  mastered: number
+  correct: number
+  wrong: number
+  correctRate: number
+}) {
+  const next =
+    dueCount > 0
+      ? `今天有 ${dueCount} 道题到期复习，先把它们清掉。`
+      : attempted < objectiveQuestions.length
+        ? `还有 ${objectiveQuestions.length - attempted} 道客观题没练过，继续扩大覆盖。`
+        : '题库已全部练过，用一场模拟考试检验一下。'
+  return (
+    <header className="pro-head" aria-label="今日概览">
+      <div>
+        <h1 className="pro-head-title">{greeting()}</h1>
+        <p className="pro-head-next">{next}</p>
+        <div className="btn-row pro-head-actions">
+          <button className="btn btn-primary btn-lg" onClick={() => void nav('plan')}>
+            开始今日复习
+          </button>
+          <button className="btn btn-lg" onClick={() => void nav('practice')}>
+            自由刷题
+          </button>
+          <button className="btn btn-ghost btn-lg" onClick={() => openFloatingAiConversation()}>
+            问 AI 助手
+          </button>
+        </div>
+      </div>
+      <dl className="ledger">
+        <div className="is-key">
+          <dt>题库覆盖率</dt>
+          <dd className="ledger-num">
+            {Math.round(coverage * 100)}
+            <small>%</small>
+          </dd>
+          <dd className="ledger-hint">
+            {attempted} / {objectiveQuestions.length} 道已练
+          </dd>
+        </div>
+        <div>
+          <dt>客观题正确率</dt>
+          <dd className="ledger-num">
+            {correctRate ? Math.round(correctRate * 100) : '—'}
+            {correctRate ? <small>%</small> : null}
+          </dd>
+          <dd className="ledger-hint">
+            对 {correct}，错 {wrong}
+          </dd>
+        </div>
+        <div>
+          <dt>已掌握</dt>
+          <dd className="ledger-num">{mastered}</dd>
+          <dd className="ledger-hint">目标 {objectiveQuestions.length}</dd>
+        </div>
+        <div>
+          <dt>今日待复习</dt>
+          <dd className={`ledger-num ${dueCount > 0 ? 'is-due' : ''}`}>{dueCount}</dd>
+          <dd className="ledger-hint">今日已答 {todayCount} 题</dd>
+        </div>
+      </dl>
+    </header>
   )
 }

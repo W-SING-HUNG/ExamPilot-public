@@ -1,7 +1,7 @@
 {
   "name": "exampilot-xigai",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "postinstall": "node tools/bank-local.mjs --ensure",
@@ -10,7 +10,7 @@
     "build": "npm run bank:ensure && tsc -b && vite build",
     "preview": "vite preview",
     "server": "node server/index.mjs",
-    "test": "npm run bank:ensure && vitest run",
+    "test": "npm run bank:ensure && node tools/web/build-web.mjs --demo && node tools/web/generate-worker-assets.mjs && vitest run",
     "test:watch": "vitest",
     "test:ai": "node tests/ai-proxy.test.mjs",
     "test:ai-stream": "node tests/ai-stream.test.mjs",
@@ -36,7 +36,12 @@
     "bank:local": "node tools/bank-local.mjs",
     "bank:ensure": "node tools/bank-local.mjs --ensure",
     "bank:public": "node tools/bank-local.mjs --public",
-    "test:ui-verify": "node tests/workbuddy-verify.mjs && node tests/import-preview-verify.mjs"
+    "test:ui-verify": "node tests/ui-behaviour-verify.mjs && node tests/import-preview-verify.mjs",
+    "build:web": "node tools/web/build-web.mjs",
+    "build:web:demo": "node tools/web/build-web.mjs --demo",
+    "web:verify": "node tools/web/verify-web.mjs",
+    "web:check": "node tools/web/runtime-check.mjs",
+    "web:deploy": "node tools/web/deploy-web.mjs"
   },
   "dependencies": {
     "dexie": "^4.0.8",
@@ -53,6 +58,7 @@
     "eslint-config-prettier": "^10.1.8",
     "fake-indexeddb": "^6.2.5",
     "globals": "^17.13.0",
+    "miniflare": "^4.20260730.0",
     "prettier": "^3.9.10",
     "puppeteer-core": "^25.13.0",
     "typescript": "^5.6.3",

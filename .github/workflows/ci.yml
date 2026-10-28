@@ -168,7 +168,7 @@ jobs:
       # 独立用户测试报告的六项用户可见缺陷的浏览器回归。逐条对应：
       # 今日已答不再为 0、判断题复盘显示正确/错误、首次模拟考试可开始、
       # 材料题展开显示完整题干、导入预览计入备份而非合并结果。
-      # test:ui-verify 依次运行 workbuddy-verify（行为）与 import-preview-verify
+      # test:ui-verify 依次运行 ui-behaviour-verify（行为）与 import-preview-verify
       # （预览表格的真实单元格数值）。两者只读取界面文本，无 AI 依赖，
       # 使用独立页面并清空 localStorage，因此不需要额外的代理或端口。
       - name: 浏览器 E2E（独立测试缺陷回归）
