@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store/StoreContext'
-import { objectiveQuestions, subjectiveQuestions, allQuestions, questionById } from '../lib/bank'
+import { objectiveQuestions, subjectiveQuestions, allQuestions, questionById, chapterOrder } from '../lib/bank'
 import { buildPlan } from '../lib/plan'
-import { computeDiagnosis } from '../lib/analysis'
+import { computeDiagnosis, chapterGaps } from '../lib/analysis'
 import { isDue } from '../lib/scheduler'
 import { QuestionRunner } from '../components/QuestionRunner'
 import { CardPad, PageHead, Empty, Stat, Tag, Reveal } from '../components/ui'
@@ -10,6 +10,8 @@ import { RunnerShell, SessionShell, SessionSummary, type SessionPhase } from '..
 import { clearDraft, loadDraft, type SessionDraft } from '../lib/session-draft'
 import type { SessionResult } from '../lib/session-outcome'
 import type { Question } from '../lib/types'
+import { IS_WEB_EDITION } from '../lib/edition'
+import { ReviewLoad } from '../web/ReviewLoad'
 
 export function Plan({ params: _params }: { params: Record<string, string> }) {
   const { records, ready } = useStore()
@@ -22,6 +24,7 @@ export function Plan({ params: _params }: { params: Record<string, string> }) {
   const [showMethod, setShowMethod] = useState(false)
 
   const diag = useMemo(() => computeDiagnosis(allQuestions, records), [records])
+  const gaps = useMemo(() => chapterGaps(diag.chapters, chapterOrder), [diag])
 
   const now = Date.now()
   const dueCount = objectiveQuestions.filter((q) => {
@@ -163,10 +166,16 @@ export function Plan({ params: _params }: { params: Record<string, string> }) {
             tone={dueCount > 0 ? 'warn' : undefined}
           />
           <Stat
-            value={diag.weakPoints.length}
+            value={gaps.weak.length}
             label="薄弱章节"
-            hint="已练但覆盖或正确率不足"
-            tone={diag.weakPoints.length ? 'bad' : undefined}
+            hint={
+              gaps.weak.length
+                ? `已练但覆盖或正确率不足；另有 ${gaps.unstarted.length} 章未学习`
+                : diag.overall.attempted === 0
+                  ? `暂无练习数据；${gaps.unstarted.length} 章未学习`
+                  : `已练章节暂无薄弱；${gaps.unstarted.length} 章未学习`
+            }
+            tone={gaps.weak.length ? 'bad' : undefined}
           />
           <Stat value={freshCount} label="从未练过的题目" hint="覆盖缺口" tone={freshCount ? 'accent' : undefined} />
         </div>
@@ -250,6 +259,8 @@ export function Plan({ params: _params }: { params: Record<string, string> }) {
             <Empty text="题库已全部练完且无到期复习，可进入模拟考试检验。" />
           )}
         </CardPad>
+
+        {IS_WEB_EDITION && <ReviewLoad records={records} />}
 
         <CardPad style={{ marginTop: 14 }}>
           <div className="row-between" style={{ marginBottom: showMethod ? 12 : 0 }}>

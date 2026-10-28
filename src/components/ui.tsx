@@ -29,14 +29,17 @@ export function Stat({
   label,
   hint,
   tone,
+  featured,
 }: {
   value: ReactNode
   label: string
   hint?: string
   tone?: 'ok' | 'bad' | 'warn' | 'accent'
+  /** the one headline metric of a row gets more visual weight; the rest stay quiet */
+  featured?: boolean
 }) {
   return (
-    <CardPad className="stat-card">
+    <CardPad className={`stat-card ${featured ? 'stat-featured' : ''}`}>
       <div className={`stat-num ${tone ? `tone-${tone}` : ''}`}>{value}</div>
       <div className="stat-label">{label}</div>
       {hint && <div className="stat-hint">{hint}</div>}
@@ -545,6 +548,87 @@ function ConfirmDialog({
             {confirmLabel}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Progress ring (SVG). The number in the middle is the real value from the first
+ * frame; only the arc eases in (stroke-dashoffset, compositor-friendly). Under
+ * reduced motion the arc is drawn at once.
+ */
+export function Ring({
+  value,
+  size = 112,
+  stroke = 9,
+  label,
+  sub,
+  inner,
+}: {
+  value: number
+  size?: number
+  stroke?: number
+  label: ReactNode
+  sub?: ReactNode
+  /** optional second, inner arc (e.g. mastered inside coverage) */
+  inner?: number
+}) {
+  const v = Math.max(0, Math.min(1, value))
+  const r = (size - stroke) / 2
+  const c = 2 * Math.PI * r
+  const r2 = r - stroke - 3
+  const c2 = 2 * Math.PI * r2
+  const iv = inner === undefined ? null : Math.max(0, Math.min(1, inner))
+  const [drawn, setDrawn] = useState(false)
+  useEffect(() => {
+    const t = requestAnimationFrame(() => setDrawn(true))
+    return () => cancelAnimationFrame(t)
+  }, [])
+  return (
+    <div className="ring" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+        <circle className="ring-track" cx={size / 2} cy={size / 2} r={r} strokeWidth={stroke} fill="none" />
+        <circle
+          className="ring-arc"
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          strokeWidth={stroke}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={drawn ? c * (1 - v) : c}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+        {iv !== null && (
+          <>
+            <circle
+              className="ring-track ring-track-in"
+              cx={size / 2}
+              cy={size / 2}
+              r={r2}
+              strokeWidth={stroke - 3}
+              fill="none"
+            />
+            <circle
+              className="ring-arc ring-arc-in"
+              cx={size / 2}
+              cy={size / 2}
+              r={r2}
+              strokeWidth={stroke - 3}
+              fill="none"
+              strokeLinecap="round"
+              strokeDasharray={c2}
+              strokeDashoffset={drawn ? c2 * (1 - iv) : c2}
+              transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            />
+          </>
+        )}
+      </svg>
+      <div className="ring-center">
+        <span className="ring-label">{label}</span>
+        {sub && <span className="ring-sub">{sub}</span>}
       </div>
     </div>
   )

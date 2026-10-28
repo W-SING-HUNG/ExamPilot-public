@@ -1,0 +1,800 @@
+/* Web-edition kit (wk-*). Tokens only, so Standard/Pro and light/dark keep their own look. */
+.wk-tabs {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  border-bottom: 1px solid var(--border);
+  margin: 0 0 var(--sp-4);
+  -webkit-overflow-scrolling: touch;
+}
+.wk-tab {
+  flex: none;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-14);
+  padding: 10px 14px;
+  min-height: 44px;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.wk-tab:hover {
+  color: var(--text);
+}
+.wk-tab.on {
+  color: var(--accent-strong);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.wk-tabs-compact .wk-tab {
+  padding: 8px 10px;
+}
+.wk-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--bad);
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  font-weight: 600;
+}
+.wk-panel:focus {
+  outline: none;
+}
+.wk-seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.wk-seg button {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-13);
+  padding: 6px 12px;
+  min-height: 36px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.wk-seg button + button {
+  border-left: 1px solid var(--border);
+}
+.wk-seg button.on {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+.wk-empty {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: var(--fs-14);
+}
+.wk-empty b {
+  display: block;
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+.wk-notice {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: var(--fs-14);
+  margin: 0 0 var(--sp-3);
+  flex-wrap: wrap;
+}
+.wk-info {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+.wk-ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.wk-bad {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+.wk-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.wk-loading {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 16px;
+  color: var(--text-3);
+  font-size: var(--fs-14);
+}
+.wk-spin {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  animation: wkspin 0.8s linear infinite;
+}
+@keyframes wkspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wk-spin {
+    animation: none;
+  }
+}
+
+.wk-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+  margin: 0 0 var(--sp-3);
+}
+.wk-search input,
+.wk-select select,
+.wk-field input,
+.wk-field textarea,
+.wk-field select {
+  font: inherit;
+  font-size: 16px;
+  padding: 8px 12px;
+  min-height: 40px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+.wk-search {
+  flex: 1 1 200px;
+  min-width: 160px;
+}
+.wk-search input {
+  width: 100%;
+}
+.wk-select {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--fs-12);
+  color: var(--text-3);
+}
+.wk-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-14);
+  color: var(--text-2);
+  margin: 10px 0;
+}
+.wk-field textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.wk-table-wrap {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.wk-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-14);
+}
+.wk-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-2);
+  font-size: var(--fs-13);
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.wk-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.wk-table tr:last-child td {
+  border-bottom: 0;
+}
+.wk-table tr.wk-click {
+  cursor: pointer;
+}
+.wk-table tr.wk-click:hover td {
+  background: var(--surface-2);
+}
+.wk-th-btn {
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  font-weight: 600;
+}
+.wk-row-btn {
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent-strong);
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  font-weight: 500;
+}
+.wk-sel {
+  width: 36px;
+}
+.wk-sel input {
+  width: 18px;
+  height: 18px;
+}
+.wk-pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-13);
+  color: var(--text-3);
+}
+.wk-pager-info {
+  margin-right: auto;
+}
+.wk-pager button {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 10px;
+  min-height: 36px;
+  font: inherit;
+  cursor: pointer;
+}
+.wk-pager button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.wk-pager-size {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.wk-pager-size select {
+  font: inherit;
+  min-height: 36px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+@media (max-width: 720px) {
+  .wk-table thead {
+    display: none;
+  }
+  .wk-table,
+  .wk-table tbody,
+  .wk-table tr,
+  .wk-table td {
+    display: block;
+    width: 100%;
+  }
+  .wk-table tr {
+    border-bottom: 1px solid var(--border);
+    padding: 8px 0;
+  }
+  .wk-table td {
+    border: 0;
+    padding: 3px 14px;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    text-align: right !important;
+  }
+  .wk-table td::before {
+    content: attr(data-label);
+    color: var(--text-3);
+    font-size: var(--fs-12);
+    flex: none;
+    text-align: left;
+  }
+  .wk-table td.wk-first {
+    font-size: var(--fs-15);
+    text-align: left !important;
+  }
+  .wk-table td.wk-first::before {
+    display: none;
+  }
+  .wk-table td.wk-minor {
+    display: none;
+  }
+  .wk-table td.wk-sel {
+    display: none;
+  }
+  .wk-pager-info {
+    flex-basis: 100%;
+  }
+}
+
+.wk-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.38);
+  z-index: 10040;
+  display: flex;
+  justify-content: flex-end;
+}
+/* drawers/dialogs sit above the floating AI launcher (9999) and window (10000), so nothing
+   floats over their buttons; a confirm opened from a drawer sits above that drawer.
+   Still below the one-time Pro welcome (10050). */
+.wk-overlay.wk-center {
+  z-index: 10045;
+}
+.wk-center {
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.wk-drawer {
+  background: var(--surface);
+  color: var(--text);
+  width: min(560px, 100%);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -8px 0 30px rgba(0, 0, 0, 0.18);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.wk-drawer:focus {
+  outline: none;
+}
+.wk-drawer-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.wk-drawer-h h2 {
+  font-size: var(--fs-17);
+  margin: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.wk-x {
+  border: 0;
+  background: var(--surface-2);
+  color: var(--text);
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+}
+.wk-drawer-b {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  overscroll-behavior: contain;
+}
+.wk-drawer-f {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.wk-dialog {
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 12px;
+  width: min(460px, 100%);
+  padding: 20px;
+  max-height: 90vh;
+  overflow: auto;
+}
+.wk-dialog h2 {
+  margin: 0 0 8px;
+  font-size: var(--fs-17);
+}
+.wk-dialog-body {
+  color: var(--text-2);
+  font-size: var(--fs-14);
+}
+.wk-dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.wk-chart {
+  margin: 0;
+}
+.wk-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+.wk-axis {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+.wk-hit {
+  fill: transparent;
+}
+.wk-bar,
+.wk-pt {
+  cursor: pointer;
+  outline: none;
+}
+.wk-bar-fill {
+  fill: var(--accent);
+  opacity: 0.82;
+}
+.wk-bar-fill2 {
+  fill: var(--bad);
+  opacity: 0.7;
+}
+.wk-bar:hover .wk-bar-fill,
+.wk-bar:focus .wk-bar-fill {
+  opacity: 1;
+}
+.wk-bar.on .wk-bar-fill {
+  fill: var(--accent-strong);
+  opacity: 1;
+}
+.wk-bar:focus-visible .wk-hit,
+.wk-pt:focus-visible .wk-hit {
+  stroke: var(--accent);
+  stroke-width: 2;
+  fill: var(--accent-soft);
+}
+.wk-tick {
+  font-size: 10px;
+  fill: var(--text-3);
+}
+.wk-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.wk-dot {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.wk-pt.on .wk-dot {
+  fill: var(--accent);
+}
+.wk-tip {
+  font-size: var(--fs-13);
+  color: var(--text-2);
+  min-height: 20px;
+  text-align: center;
+}
+.wk-hbars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wk-hbar {
+  display: grid;
+  grid-template-columns: minmax(80px, 30%) 1fr auto;
+  gap: 10px;
+  align-items: center;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-13);
+  color: var(--text);
+  padding: 6px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  min-height: 36px;
+}
+.wk-hbar:hover {
+  background: var(--surface-2);
+}
+.wk-hbar.on {
+  background: var(--accent-soft);
+}
+.wk-hbar-l {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wk-hbar-track {
+  height: 8px;
+  background: var(--surface-3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.wk-hbar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+}
+.wk-hbar-v {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.wk-ring {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.wk-ring-bg {
+  fill: none;
+  stroke: var(--surface-3);
+  stroke-width: 9;
+}
+.wk-ring-fg {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 9;
+  stroke-linecap: round;
+}
+.wk-ring-t {
+  font-size: 20px;
+  font-weight: 600;
+  fill: var(--text);
+}
+.wk-ring-l {
+  font-weight: 600;
+  font-size: var(--fs-14);
+}
+.wk-ring-s {
+  font-size: var(--fs-12);
+  color: var(--text-3);
+}
+
+/* layout helpers */
+.wk-grid {
+  display: grid;
+  gap: var(--sp-3);
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+}
+.wk-kpis {
+  display: grid;
+  gap: var(--sp-2);
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  margin: 0 0 var(--sp-4);
+}
+.wk-kpi {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 12px 14px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+button.wk-kpi {
+  cursor: pointer;
+}
+button.wk-kpi:hover {
+  border-color: var(--accent);
+}
+.wk-kpi b {
+  display: block;
+  font-size: var(--fs-24);
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.wk-kpi span {
+  font-size: var(--fs-12);
+  color: var(--text-3);
+}
+.wk-box {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 14px 16px;
+}
+.wk-box-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 8px;
+}
+.wk-box-h h3 {
+  margin: 0;
+  font-size: var(--fs-15);
+}
+.wk-dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 14px;
+  font-size: var(--fs-14);
+  margin: 0;
+}
+.wk-dl dt {
+  color: var(--text-3);
+}
+.wk-dl dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.wk-pill {
+  display: inline-block;
+  font-size: var(--fs-12);
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.wk-pill.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.wk-pill.bad {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
+.wk-pill.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.wk-pill.acc {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+.wk-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.wk-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-13);
+  overflow-wrap: anywhere;
+}
+.wk-muted {
+  color: var(--text-3);
+  font-size: var(--fs-13);
+}
+.wk-danger-zone {
+  border: 1px solid var(--bad);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--bad-soft);
+}
+.wk-danger-zone h3 {
+  margin: 0 0 6px;
+  color: var(--bad);
+  font-size: var(--fs-15);
+}
+
+/* Sticky action bar for focused question flows (web only; never covers the keyboard:
+   it is position:sticky inside the page flow, not fixed). */
+.wk-sticky-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(6px);
+  padding: 10px 0 calc(10px + env(safe-area-inset-bottom));
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.mock-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 4px;
+}
+.mock-cell {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-13);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.mock-cell.mc-right {
+  background: var(--ok-soft);
+  color: var(--ok);
+  border-color: transparent;
+}
+.mock-cell.mc-wrong {
+  background: var(--bad-soft);
+  color: var(--bad);
+  border-color: transparent;
+}
+.mock-cell.mc-subj {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-color: transparent;
+}
+.mock-cell.on {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  font-weight: 700;
+}
+.web-quick .btn {
+  min-height: 44px;
+}
+
+/* ---- focused question flow (web only: html[data-tier] is set by the web edition) ---- */
+html[data-tier] .runner-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 15;
+  background: var(--bg);
+  margin-left: -4px;
+  margin-right: -4px;
+  padding: 12px 4px calc(12px + env(safe-area-inset-bottom));
+}
+@media (max-width: 640px) {
+  html[data-tier='pro'] .runner-foot {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+  html[data-tier] .runner-foot .muted-2 {
+    display: none;
+  }
+}
+.q-stem-long .q-stem {
+  max-height: 15em;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(#000 75%, transparent);
+  mask-image: linear-gradient(#000 75%, transparent);
+}
+.q-stem-long.open .q-stem {
+  max-height: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+.q-stem-toggle {
+  margin-top: 4px;
+}
+.wk-more {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+@media (max-width: 720px) {
+  .wk-seg button,
+  .wk-pager button,
+  .wk-pager-size select,
+  .wk-th-btn {
+    min-height: 40px;
+  }
+  .wk-tab {
+    min-height: 44px;
+  }
+}

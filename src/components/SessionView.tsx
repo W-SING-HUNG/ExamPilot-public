@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { useAiUsable } from '../lib/ai-access'
 import type { SessionResult } from '../lib/session-outcome'
 
 /* ============================================================================
@@ -83,6 +84,7 @@ export function SessionSummary({
   exitLabel?: string
   onReviewWrong?: () => void
 }) {
+  const aiOn = useAiUsable()
   const { total, answered, correct, wrong, unscored, unanswered, accuracy, durationMs } = result
   const pct = accuracy === null ? null : Math.round(accuracy * 100)
 
@@ -140,8 +142,8 @@ export function SessionSummary({
           )}
           {unscored > 0 && (
             <li>
-              有 <b>{unscored}</b> 道主观题未自动评分——这是题库本身的限制，不代表答错。可回到题目使用「AI
-              参考评阅」自评结构。
+              有 <b>{unscored}</b> 道主观题未自动评分——这是题库本身的限制，不代表答错。
+              {aiOn ? '可回到题目使用「AI 参考评阅」自评结构。' : '可回到题目对照答题结构自评。'}
             </li>
           )}
           {unanswered > 0 && (

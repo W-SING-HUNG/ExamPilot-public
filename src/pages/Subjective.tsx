@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useAiUsable } from '../lib/ai-access'
 import { useStore } from '../store/StoreContext'
 import { subjectiveQuestions, TYPE_LABEL, questionById } from '../lib/bank'
 import { selectQuestions } from '../lib/scheduler'
@@ -26,6 +27,7 @@ const STRUCTURE_HINT: Record<string, string[]> = {
 }
 
 export function Subjective({ params }: { params: Record<string, string> }) {
+  const aiOn = useAiUsable()
   const { records, ready } = useStore()
   const [kind, setKind] = useState<'short' | 'material'>((params.kind as 'short' | 'material') ?? 'short')
   const [count, setCount] = useState(3)
@@ -34,6 +36,14 @@ export function Subjective({ params }: { params: Record<string, string> }) {
   const [sessionId, setSessionId] = useState('')
   const [result, setResult] = useState<SessionResult | null>(null)
   const [draft, setDraft] = useState<SessionDraft | null>(() => loadDraft('subjective'))
+  // D-02: a reload (or opening the page on another device) continues an unfinished
+  // round where it stopped — same question, same typed text — like the mock exam.
+  const [resumed, setResumed] = useState(false)
+  useEffect(() => {
+    if (!ready || resumed || phase !== 'configure' || !draft) return
+    setResumed(true)
+    resume(draft)
+  }, [ready, draft])
 
   const pool = useMemo(() => subjectiveQuestions.filter((q) => q.type === kind), [kind])
   const attempted = useMemo(() => pool.filter((q) => (records.get(q.id)?.attempts ?? 0) > 0).length, [pool, records])
@@ -63,6 +73,7 @@ export function Subjective({ params }: { params: Record<string, string> }) {
       setDraft(null)
       return
     }
+    if (qs[0].type === 'short' || qs[0].type === 'material') setKind(qs[0].type)
     begin(qs, d.sessionId)
   }
 
@@ -81,8 +92,18 @@ export function Subjective({ params }: { params: Record<string, string> }) {
       <SessionShell>
         <PageHead
           title={`主观题训练 · ${TYPE_LABEL[kind]}`}
-          desc="主观题无自动评分：提交后记为“未自动评分”，不计为错误；可用 AI 参考评阅自评结构。"
+          desc={
+            aiOn
+              ? '主观题无自动评分：提交后记为“未自动评分”，不计为错误；可用 AI 参考评阅自评结构。'
+              : '主观题无自动评分：提交后记为“未自动评分”，不计为错误；请对照答题结构参考自评。'
+          }
         />
+        {resumed && draft && draft.sessionId === sessionId && (
+          <div className="callout" role="status" style={{ marginBottom: 12 }}>
+            已恢复上次未完成的训练：第 {Math.min(draft.idx + 1, draft.qids.length)} / {draft.qids.length}{' '}
+            题，作答内容已保留。
+          </div>
+        )}
         <RunnerShell>
           <QuestionRunner
             questions={session}

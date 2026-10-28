@@ -1,3 +1,4 @@
+import { IS_WEB_EDITION } from '../lib/edition'
 import {
   useCallback,
   useEffect,
@@ -12,6 +13,7 @@ import { TYPE_LABEL } from '../lib/bank'
 import { answerText } from '../lib/scoring'
 import { Tag } from './ui'
 import { triggerFloatingAi } from './FloatingAiAssistant'
+import { useAiUsable } from '../lib/ai-access'
 
 interface Props {
   q: Question
@@ -39,6 +41,8 @@ export function QuestionCard({
   freeText = false,
   bannerRef,
 }: Props) {
+  // AI entry points render only when this account may use AI (always on desktop).
+  const aiOn = useAiUsable()
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([])
   const isSingle = q.type === 'single'
   const isMulti = q.type === 'multi'
@@ -96,7 +100,11 @@ export function QuestionCard({
 
   const head = (
     <>
-      <div className="q-stem">{q.stem}</div>
+      {IS_WEB_EDITION && q.stem.length > 420 ? (
+        <LongStem key={q.id} text={q.stem} />
+      ) : (
+        <div className="q-stem">{q.stem}</div>
+      )}
       <div className="q-meta">
         <Tag tone="accent">{TYPE_LABEL[q.type]}</Tag>
         <Tag>{q.chapter}</Tag>
@@ -224,7 +232,7 @@ export function QuestionCard({
         </div>
       )}
 
-      {reveal && (
+      {reveal && aiOn && (
         <div className="btn-row" style={{ marginTop: 14, flexWrap: 'wrap', gap: 8 }}>
           <button
             className="ai-btn-trigger"
@@ -263,6 +271,27 @@ export function QuestionCard({
           {!q.hasOfficialAnswer && <Tag tone="warn">本题题库无标准答案，AI 仅作参考</Tag>}
         </div>
       )}
+    </div>
+  )
+}
+
+/** Web: long material stems start collapsed (first ~12 lines) with an explicit toggle; nothing is hidden for good. */
+function LongStem({ text }: { text: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className={`q-stem-long ${open ? 'open' : ''}`}>
+      <div className="q-stem" id="q-stem-long">
+        {text}
+      </div>
+      <button
+        type="button"
+        className="btn btn-sm btn-ghost q-stem-toggle"
+        aria-expanded={open}
+        aria-controls="q-stem-long"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? '收起材料' : `展开全文（${text.length} 字）`}
+      </button>
     </div>
   )
 }

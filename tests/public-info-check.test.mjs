@@ -937,16 +937,15 @@ function shippedExemptionLines() {
   const end = src.indexOf('\n]', start)
   assert.ok(end > start, 'exemption table is well formed')
   const block = src.slice(start, end)
-  const lines = [...block.matchAll(/\bline:\s*'((?:[^'\\]|\\.)*)'/g)].map((m) =>
-    m[1].replace(/\\'/g, "'").replace(/\\\\/g, '\\'),
+  const lines = [...block.matchAll(/\bline:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/g)].map((m) =>
+    (m[1] ?? m[2]).replace(/\\'/g, "'").replace(/\\\\/g, '\\'),
   )
-  assert.equal(lines.length, 3, 'exactly three reviewed lines are exempted')
+  assert.equal(lines.length, 4, 'exactly four reviewed lines are exempted')
   return lines
 }
 const EXEMPT_LINES = shippedExemptionLines()
 const L_PROMPT = EXEMPT_LINES[0]
 const L_CLEAR = EXEMPT_LINES[1]
-const L_COMMIT = EXEMPT_LINES[2]
 // A NEAR MISS: same words, different tail. Must not be exempted.
 const L_NEARMISS = L_PROMPT + ' — 这是另一个版本的写法'
 
@@ -958,17 +957,6 @@ test('exemption: the two reviewed product lines in FloatingAiAssistant pass', ()
   const { code, out } = runGateRaw(d, ['--index', '--no-metadata'])
   assert.equal(code, 0, 'reviewed UI copy is not a private record')
   assert.doesNotMatch(out, /process-disclosure/)
-})
-
-test('exemption: the reviewed commit body passes', () => {
-  const d = repo()
-  writeFileSync(path.join(d, 'a.md'), 'x\n')
-  gitIn(d, ['add', '-A'])
-  // The exemption is keyed to this exact sha, so a fixture cannot reproduce it
-  // in a temp repo. Assert the mechanism directly against the shipped table.
-  const gate = readFileSync(SCRIPT, 'utf8')
-  assert.match(gate, /909dcab765d9a9c3e77be152a03548e2aa3902b6/, 'exemption is pinned to the real commit sha')
-  assert.ok(gate.includes(L_COMMIT), 'exemption names the exact line')
 })
 
 test('exemption: the same WORDS on a different line in the same file still block', () => {
@@ -1046,9 +1034,38 @@ test('exemption: table entries are exact, rule-scoped and justified', () => {
   for (const m of block.matchAll(/rule:\s*'([^']+)'/g)) {
     assert.equal(m[1], 'process-disclosure', 'only the reviewed vocabulary rule is exemptible')
   }
-  assert.equal((block.match(/reason:/g) || []).length, 3, 'every entry documents why it is safe')
-  assert.equal((block.match(/rule:\s*/g) || []).length, 3, 'exactly three reviewed entries')
+  assert.equal((block.match(/reason:/g) || []).length, 4, 'every entry documents why it is safe')
+  assert.equal((block.match(/rule:\s*/g) || []).length, 4, 'exactly four reviewed entries')
   // The vocabulary itself must be untouched by this mechanism.
   assert.match(gate, /'提' \+ '示词'/, 'the flagged word is still in the vocabulary')
   assert.match(gate, /'对话' \+ '记录'/, 'the flagged phrase is still in the vocabulary')
+})
+
+test('review rule: a fabricated infrastructure id in deployment code is flagged', () => {
+  const d = repo()
+  mkdirSync(path.join(d, 'tools', 'web'), { recursive: true })
+  // Entirely invented values. The rule must fire on the SHAPE, not on a list of
+  // known resources, so an operator account id or D1 uuid cannot slip in unnoticed.
+  writeFileSync(
+    path.join(d, 'tools', 'web', 'deploy-demo.mjs'),
+    [
+      "const ACCOUNT = '0123456789abcdef0123456789abcdef'",
+      "const DB = '11111111-2222-4333-8444-555555555555'",
+      "const HOST = 'demo-tenant.workers.dev'",
+      '',
+    ].join('\n'),
+  )
+  gitIn(d, ['add', '-A'])
+  const { code, out } = runGateRaw(d, ['--index', '--no-metadata'])
+  assert.equal(code, 0, 'a REVIEW finding does not block the build')
+  const hits = out.match(/cloud-resource-id/g) || []
+  assert.ok(hits.length >= 3, 'every identifier shape on those lines is reported')
+  assert.doesNotMatch(out, /0123456789abcdef/, 'the matched value is never echoed back')
+})
+
+test('the gate keeps no record of specific resources, hashed or otherwise', () => {
+  const gate = readFileSync(SCRIPT, 'utf8')
+  assert.doesNotMatch(gate, /OPERATOR_DIGESTS/, 'no digest table of real identifiers')
+  assert.doesNotMatch(gate, /\b[0-9a-f]{64}\b/, 'no 64-hex constant of that shape')
+  assert.doesNotMatch(gate, /hasOperatorId|infraTokens/, 'no digest-matching helpers')
 })

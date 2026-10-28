@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useAiUsable } from '../lib/ai-access'
 import { useStore } from '../store/StoreContext'
 import {
   parseExport,
@@ -18,6 +19,7 @@ import {
 import { CardPad, PageHead, Tag, useToast } from '../components/ui'
 import { APP_VERSION } from '../lib/meta'
 import { bank } from '../lib/bank'
+import { IS_WEB_EDITION } from '../lib/edition'
 
 /**
  * Import is a two-step flow:
@@ -38,7 +40,10 @@ interface Preview {
 }
 
 export function DataIOCard() {
-  const { records, history, mocks, aiReviews, settings, ready, restoreBackup } = useStore()
+  const aiOn = useAiUsable()
+  const { raw, legacy, aiReviews, settings, ready, restoreBackup } = useStore()
+  // Backups always carry every stored row, including rows kept out of statistics.
+  const { records, history, mocks } = raw
   const { toast, el } = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
   const [msg, setMsg] = useState<string[]>([])
@@ -151,13 +156,18 @@ export function DataIOCard() {
     setBusy(true)
     try {
       const { plan } = preview
+      // Web edition (cloud sync): a merge only ADDS the backup's own rows to the
+      // account's log; the account's other rows are never rewritten. Replace
+      // starts the account over from the backup (synced as a reset + import).
+      const rows = IS_WEB_EDITION && mode === 'merge' ? plan.incoming : plan
       const out = await restoreBackup({
-        records: plan.records,
-        history: plan.history,
-        mocks: plan.mocks,
-        aiReviews: plan.aiReviews,
+        records: rows.records,
+        history: rows.history,
+        mocks: rows.mocks,
+        aiReviews: rows.aiReviews,
         settingsAction: plan.settingsAction,
         settings: plan.settings,
+        mode,
       })
       setMsg([
         '导入完成：学习记录、历史、模拟考试、AI 评阅与偏好设置已按所选策略恢复。',
@@ -206,6 +216,13 @@ export function DataIOCard() {
             学习记录 {records.size} 条 · 历史 {history.length} 条 · 模拟考试 {mocks.length} 场 · AI 评阅{' '}
             {aiReviews.length} 条
           </div>
+          {legacy.records + legacy.history + legacy.mocks > 0 && (
+            <div className="muted-2" style={{ marginTop: -6, marginBottom: 12 }}>
+              其中 {legacy.records} 条学习记录、{legacy.history} 条历史、{legacy.mocks}{' '}
+              场模拟考试来自旧版演示题库，不属于当前 {bank.questions.length}{' '}
+              题题库，已不计入任何统计；数据仍原样保留在本浏览器，导出时一并备份。
+            </div>
+          )}
           <div className="btn-row">
             <button className="btn btn-primary" onClick={exportAll}>
               导出学习数据（JSON）
@@ -253,6 +270,7 @@ export function DataIOCard() {
           </div>
           <input
             ref={fileRef}
+            aria-label={IS_WEB_EDITION ? '选择要导入的备份文件（JSON）' : undefined}
             type="file"
             accept=".json,application/json"
             onChange={(e) => {
@@ -428,14 +446,14 @@ export function DataIOCard() {
         <div className="card-title">数据说明</div>
         <ul className="muted" style={{ margin: 0, paddingLeft: 20, lineHeight: 2 }}>
           <li>
-            备份包含学习记录、练习历史、模拟考试成绩、AI 评阅与偏好设置，并附带基于全量题干、选项与答案的 SHA-256
-            题库指纹。
+            备份包含学习记录、练习历史、模拟考试成绩{aiOn ? '、AI 评阅' : ''}
+            与偏好设置，并附带基于全量题干、选项与答案的 SHA-256 题库指纹。
           </li>
           <li>只有在题库指纹完全一致时，学习进度与练习历史才能安全恢复，以杜绝题目答案变动引发的串题错误。</li>
           <li>题库指纹不同或旧备份缺少指纹时，未通过完整题库一致性证明的学习记录不会混入当前统计。</li>
           <li>
-            简答题与材料分析论述题在题库中只有题干、没有标准答案，系统不伪造官方答案；AI
-            评阅结果会单独保存并标注为参考评阅。
+            简答题与材料分析论述题在题库中只有题干、没有标准答案，系统不伪造官方答案
+            {aiOn ? '；AI 评阅结果会单独保存并标注为参考评阅。' : '。'}
           </li>
           <li>清除浏览器站点数据会删除本地学习记录，请定期导出备份。</li>
         </ul>

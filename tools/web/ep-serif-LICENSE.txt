@@ -1,0 +1,4 @@
+ep-serif-600.woff2 is a glyph subset (UI strings only), instanced at weight 600, of
+Noto Serif SC (https://github.com/notofonts/noto-cjk), Copyright 2017 Adobe Systems
+Incorporated, licensed under the SIL Open Font License, Version 1.1
+(https://openfontlicense.org). Regenerate after UI copy changes; see docs/web-design-system.md.

@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="robots" content="noindex,nofollow,noarchive" />
+    <meta name="referrer" content="no-referrer" />
+    <title>ExamPilot · 加入申请</title>
+    <link rel="icon" href="/logo.svg" />
+    <style>
+      :root {
+        --blue: #0071e3;
+        --blue-d: #0059b3;
+        --ink: #14213d;
+        --ink-2: #45526b;
+        --ink-3: #5f6b80;
+        --line: #e3e9f2;
+        --bg: #f4f7fb;
+        --soft: #eaf2fd;
+        --ok: #127a3e;
+        --okb: #e7f6ec;
+        --bad: #b42318;
+        --badb: #fdecea;
+        --warn: #8a5a00;
+        --warnb: #fff6e0;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC',
+          sans-serif;
+        color: var(--ink);
+        background: var(--bg);
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+      }
+      a {
+        color: var(--blue-d);
+      }
+      .top {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px clamp(16px, 5vw, 48px);
+        background: #fff;
+        border-bottom: 1px solid var(--line);
+      }
+      .top img {
+        width: 32px;
+        height: 32px;
+      }
+      .top b {
+        font-size: 17px;
+      }
+      .top nav {
+        margin-left: auto;
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+      }
+      .top nav a {
+        font-size: 14px;
+        text-decoration: none;
+        color: var(--ink-2);
+        padding: 8px 10px;
+        border-radius: 8px;
+        min-height: 40px;
+        display: inline-flex;
+        align-items: center;
+      }
+      @media (max-width: 560px) {
+        .top {
+          flex-wrap: wrap;
+          gap: 8px 12px;
+        }
+        .top nav {
+          margin-left: 0;
+          width: 100%;
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 4px;
+        }
+        .top nav a {
+          justify-content: center;
+          padding: 8px 2px;
+          white-space: nowrap;
+        }
+      }
+      @media (max-width: 340px) {
+        .top nav a {
+          font-size: 13px;
+        }
+      }
+      .top nav a[aria-current='page'] {
+        background: var(--soft);
+        color: var(--blue-d);
+        font-weight: 600;
+      }
+      main {
+        flex: 1;
+        width: 100%;
+        max-width: 560px;
+        margin: 0 auto;
+        padding: clamp(20px, 5vw, 48px) 16px 48px;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: clamp(20px, 4vw, 28px);
+      }
+      h1 {
+        font-size: clamp(22px, 4.5vw, 28px);
+        margin: 0 0 6px;
+        line-height: 1.3;
+      }
+      .lead {
+        color: var(--ink-2);
+        margin: 0 0 20px;
+      }
+      .ann {
+        background: var(--soft);
+        border-radius: 10px;
+        padding: 10px 14px;
+        margin: 0 0 16px;
+        font-size: 14px;
+        color: var(--blue-d);
+        white-space: pre-wrap;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        font-size: 14px;
+        margin: 14px 0 6px;
+      }
+      .hint {
+        font-weight: 400;
+        color: var(--ink-3);
+        font-size: 13px;
+      }
+      input[type='email'],
+      input[type='text'],
+      input[inputmode='numeric'],
+      textarea {
+        width: 100%;
+        font: inherit;
+        font-size: 16px;
+        padding: 12px 14px;
+        border: 1px solid #cdd6e3;
+        border-radius: 10px;
+        background: #fff;
+        color: var(--ink);
+      }
+      textarea {
+        min-height: 96px;
+        resize: vertical;
+      }
+      input:focus-visible,
+      textarea:focus-visible,
+      button:focus-visible,
+      a:focus-visible {
+        outline: 3px solid #8ab8f5;
+        outline-offset: 2px;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: stretch;
+      }
+      .row input {
+        flex: 1;
+      }
+      button {
+        font: inherit;
+        font-size: 16px;
+        font-weight: 600;
+        border: 0;
+        border-radius: 10px;
+        min-height: 48px;
+        padding: 0 18px;
+        cursor: pointer;
+      }
+      .pri {
+        background: var(--blue);
+        color: #fff;
+        width: 100%;
+        margin-top: 18px;
+      }
+      .pri:hover {
+        background: var(--blue-d);
+      }
+      .sec {
+        background: var(--soft);
+        color: var(--blue-d);
+        white-space: nowrap;
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      .msg {
+        margin-top: 14px;
+        padding: 10px 14px;
+        border-radius: 10px;
+        font-size: 14px;
+        display: none;
+        white-space: pre-wrap;
+      }
+      .msg.show {
+        display: block;
+      }
+      .msg.ok {
+        background: var(--okb);
+        color: var(--ok);
+      }
+      .msg.err {
+        background: var(--badb);
+        color: var(--bad);
+      }
+      .msg.info {
+        background: var(--warnb);
+        color: var(--warn);
+      }
+      .chk {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        font-weight: 400;
+        font-size: 14px;
+        color: var(--ink-2);
+      }
+      .chk input {
+        width: 20px;
+        height: 20px;
+        margin-top: 2px;
+        flex: none;
+      }
+      .status {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-top: 12px;
+      }
+      .badge {
+        display: inline-block;
+        font-size: 13px;
+        font-weight: 600;
+        border-radius: 999px;
+        padding: 2px 10px;
+      }
+      .b-pending {
+        background: var(--warnb);
+        color: var(--warn);
+      }
+      .b-approved {
+        background: var(--okb);
+        color: var(--ok);
+      }
+      .b-rejected {
+        background: var(--badb);
+        color: var(--bad);
+      }
+      .muted {
+        color: var(--ink-3);
+        font-size: 13px;
+      }
+      .steps {
+        display: flex;
+        gap: 6px;
+        margin: 0 0 18px;
+        padding: 0;
+        list-style: none;
+        font-size: 13px;
+        color: var(--ink-3);
+      }
+      .steps li {
+        flex: 1;
+        border-top: 3px solid var(--line);
+        padding-top: 6px;
+      }
+      .steps li.on {
+        border-color: var(--blue);
+        color: var(--blue-d);
+        font-weight: 600;
+      }
+      #ts {
+        margin-top: 14px;
+        min-height: 65px;
+      }
+      footer {
+        text-align: center;
+        color: var(--ink-3);
+        font-size: 12px;
+        padding: 20px;
+      }
+      .hidden {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <img src="/logo.svg" alt="" width="32" height="32" /><b>ExamPilot</b>
+      <nav aria-label="页面">
+        <a href="/">介绍</a><a href="/apply" data-nav="apply">申请加入</a
+        ><a href="/status" data-nav="status">查询状态</a><a href="/account" data-nav="account">撤销注销</a>
+      </nav>
+    </header>
+    <main>
+      <div class="card" id="card">
+        <ol class="steps" id="steps" aria-label="进度">
+          <li class="on">验证邮箱</li>
+          <li>填写申请</li>
+          <li>等待审核</li>
+        </ol>
+        <h1 id="title">申请加入 ExamPilot</h1>
+        <p class="lead" id="lead"></p>
+        <p class="ann hidden" id="ann"></p>
+        <div id="refbox" class="msg info"></div>
+
+        <!-- step 1: verify -->
+        <form id="f-verify" novalidate>
+          <label for="email">邮箱</label>
+          <div class="row">
+            <input
+              id="email"
+              type="email"
+              autocomplete="email"
+              required
+              maxlength="254"
+              placeholder="you@example.com"
+            /><button type="button" class="sec" id="send">发送验证码</button>
+          </div>
+          <div id="ts" aria-label="人机验证"></div>
+          <label for="code"
+            >验证码
+            <span class="hint"
+              >（6 位数字，10 分钟内有效；邮件标题为“ExamPilot 验证码”，与登录学习站用的 Cloudflare
+              验证码不是同一个）</span
+            ></label
+          >
+          <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" disabled />
+          <button class="pri" id="verify" type="submit" disabled>验证邮箱</button>
+        </form>
+
+        <!-- step 2: apply -->
+        <form id="f-apply" class="hidden" novalidate>
+          <p class="muted">已验证：<b id="who"></b></p>
+          <label for="note">申请说明 <span class="hint">（选填，最多 500 字）</span></label>
+          <textarea id="note" maxlength="500" placeholder="例如：同班同学，想用来复习习概"></textarea>
+          <label class="chk hidden" id="consentRow"
+            ><input type="checkbox" id="consent" />
+            我知道推荐人会看到我脱敏后的邮箱、申请日期和审核状态（看不到申请说明）。</label
+          >
+          <button class="pri" id="submit" type="submit">提交申请</button>
+        </form>
+
+        <!-- status / result -->
+        <section id="s-status" class="hidden" aria-live="polite"></section>
+
+        <div id="msg" class="msg" role="status" aria-live="polite"></div>
+      </div>
+    </main>
+    <footer>ExamPilot 习概复习系统 · 邀请制 · 本页面不被搜索引擎收录</footer>
+    <script src="/portal.js" defer></script>
+  </body>
+</html>
