@@ -125,7 +125,23 @@ const PRIVATE_COLLAB_CONTEXT = [
  * deliverable plus a production verb, not merely two words on the same line.
  */
 const AI_AGENT = `(?:AI|LLM|${'大模型'}|${'人工智能'}|${AI_TOOL_ALT.source})`
-const WORK_OBJECT = `(?:本项目|该项目|这个项目|本仓库|仓库|代码库|代码|源码|文档|本文件|this\\s+project|the\\s+project|this\\s+repo|the\\s+repo|the\\s+code(?:base)?|the\\s+docs?)`
+/**
+ * The thing that was produced. Any part of a deliverable counts, not only the
+ * whole repository: a module, a feature, a page, a component, a chapter or a
+ * section is just as much "the work" when a sentence attributes it to an
+ * assistant, and real disclosures name the part rather than the project.
+ *
+ * An optional demonstrative prefix is part of the same token — 「本模块」
+ * 「这个功能」「该页面」「此部分」— because that is how the sentence actually
+ * reads. Bare nouns stay in the list so 「模块由 … 完成」 is caught too.
+ *
+ * Scope note: these are DELIVERABLE nouns only. Words that name what the
+ * product does (模型、能力、接口、API、数据) are deliberately absent — a sentence
+ * like 「产品使用 Claude 模型」 is product information, not authorship, and the
+ * patterns below also require a producer particle (由 / by), so it never fires.
+ */
+const WORK_NOUN = `(?:项目|模块|功能|页面|组件|章节|部分|仓库|代码库|代码|源码|文档|文件)`
+const WORK_OBJECT = `(?:(?:本|这|那|该|此)(?:个|一)?${WORK_NOUN}|${WORK_NOUN}|(?:this|the)\\s+(?:project|module|feature|page|component|section|part|repo|repository|code(?:base)?|docs?))`
 const PRODUCE = `(?:生成|编写|撰写|完成|实现|开发|产出|written|developed|implemented|generated|produced|authored|built)`
 const ROLE = `(?:作者|开发者|维护者|投稿人|author|maintainer)`
 

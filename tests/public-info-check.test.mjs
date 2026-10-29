@@ -892,6 +892,43 @@ test('gate: an author paired with an assistant IS blocked', () => {
   assert.match(out, /collaboration-authorship-narrative/)
 })
 
+test('gate: naming a module, feature or page as the work IS blocked', () => {
+  const d = repo()
+  const tool = 'Clau' + 'de'
+  // A real disclosure names the PART, not the whole repository. Each line uses a
+  // different deliverable noun so a gap in the work-object list shows up here.
+  const lines = [
+    `// 本模块由 ${tool} 完成`,
+    `// 这个功能是由 ${tool} 实现的`,
+    `// 该页面由 ${'Code' + 'x'} 生成`,
+    `// 此部分由 ${'Gem' + 'ini'} 撰写`,
+    `// 本章节由 ${'Cop' + 'ilot'} 编写`,
+    `// this module was implemented by ${tool}`,
+  ]
+  writeFileSync(path.join(d, 'NOTES.md'), lines.join('\n') + '\n')
+  gitIn(d, ['add', '-A'])
+  const { code, out } = runGateRaw(d, ['--index', '--no-metadata'])
+  assert.equal(code, 1, 'a part of the deliverable is still the deliverable')
+  assert.match(out, /collaboration-authorship-narrative/)
+})
+
+test('gate: naming the product or the model (not a deliverable) does NOT block', () => {
+  const d = repo()
+  const tool = 'Clau' + 'de'
+  // Same nouns appear here, but as the subject of what the product DOES, not as
+  // the thing that was produced. None of these carries a producer particle.
+  const lines = [
+    `- 产品使用 ${tool} 模型提供服务。`,
+    `- 功能支持 ${ASSISTANT_WORD} 辅助评阅。`,
+    `- 软件兼容 OpenAI API。`,
+    `- 正式作者和许可证声明见 LICENSE。`,
+  ]
+  writeFileSync(path.join(d, 'README.md'), lines.join('\n') + '\n')
+  gitIn(d, ['add', '-A'])
+  const { code, out } = runGateRaw(d, ['--index', '--no-metadata'])
+  assert.equal(code, 0, `product wording must not be read as authorship:\n${out}`)
+})
+
 test('gate: a share-of-output claim IS blocked', () => {
   const d = repo()
   // Assembled at runtime: this fixture must not carry the literal it tests.
