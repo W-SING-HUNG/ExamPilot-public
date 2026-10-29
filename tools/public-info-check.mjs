@@ -34,13 +34,21 @@ import { pathToFileURL } from 'node:url'
 // Flagged vocabulary (assembled from fragments so this file's own pattern table
 // does not match itself).
 //
-// AI tool names are NOT secrets — see `PROCESS_CONTEXT` below.
+// A tool name is not a secret. It is matched only inside a private-collaboration
+// phrase — see `PRIVATE_COLLAB_CONTEXT` below.
 // ---------------------------------------------------------------------------
 const FRAG = {
-  // Kept for identifying a tool name inside a private-collaboration phrase. A
-  // bare tool name is public; only the surrounding process language is not.
+  // Used to recognise a tool name inside a private-collaboration phrase or an
+  // authorship statement. A bare tool name is public; only the surrounding
+  // process language is not.
   assistantTools: ['Clau' + 'de', 'Chat' + 'GPT', 'Co' + 'pilot', 'Gem' + 'ini'],
   codingAgents: ['De' + 'vin', 'Code' + 'x'],
+  // The private development environment this project was built in. Treated like
+  // any other tool name: public on its own, internal inside a process record.
+  devEnvironment: ['Work' + 'Buddy'],
+  // The maintainer's private local handle. Not a published author name — the
+  // copyright line in LICENSE carries the legal name and is left untouched.
+  developerHandles: ['Ha' + 'rk'],
   processWords: ['提' + '示词', 'AI' + ' Agent', 'sub' + 'agent', 'agent ' + '分工', '聊天' + '记录', '对话' + '记录'],
   privateLabels: ['内部' + '工作流', '内部' + '协作记录', '私人' + '偏好', '我的' + '提示词', '我们' + '的对话'],
   validationClaims: ['独立' + '验收', '独立' + '审查', 'independently ' + 'validated', 'independent ' + 'review'],
@@ -63,27 +71,26 @@ const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const alt = (arr, flags = '') => new RegExp(`(${arr.map(esc).join('|')})`, flags)
 
 /**
- * Everything that identifies an AI helper by name. Used to build the
- * "private collaboration" rules below, NOT as a rule on its own.
+ * Everything that identifies an AI helper or the private build environment by
+ * name. Used to build the context rules below, never as a rule on its own.
  */
-const AI_TOOL_NAME = [...FRAG.assistantTools, ...FRAG.codingAgents, 'Cursor']
+const AI_TOOL_NAME = [...FRAG.assistantTools, ...FRAG.codingAgents, ...FRAG.devEnvironment, 'Cursor']
 
 /**
- * THE RULE THIS REPLACED, AND WHY.
+ * CLASSIFICATION (docs §4 "AI 产品信息与协作过程").
  *
- * An earlier version flagged any occurrence of a tool name as INTERNAL. That was
- * wrong twice over:
+ * A bare tool name, a provider name or a model id is public technical
+ * information: products integrate models, and naming the integration discloses
+ * nothing about the person who wrote the code. What is not part of a public
+ * delivery is the PRIVATE RECORD — a transcript, a personal instruction set, a
+ * process note — and the AUTHORSHIP statement that says who produced the work
+ * and with which assistant.
  *
- *   1. It treated a public product name as a secret, so `assisted by Claude` —
- *      an honest statement of how the work was done — was blocked, while the
- *      policy explicitly forbids hiding AI involvement.
- *   2. It punished disclosure and rewarded silence, which is the opposite of an
- *      information-governance control.
- *
- * What actually needs protecting is the PRIVATE RECORD: transcripts, internal
- * instructions, task assignments, someone's personal prompts. A tool name is
- * sensitive only when it appears inside that kind of content. So the name is no
- * longer matched on its own; the surrounding process vocabulary is.
+ * So the name is never matched alone. Two context rules use it:
+ *   - `private-collaboration-record` (below): the name bound to a private
+ *     artefact;
+ *   - `collaboration-authorship-narrative` (further down): the name bound to a
+ *     "who did this" sentence.
  */
 const AI_TOOL_ALT = alt(AI_TOOL_NAME, 'i')
 
@@ -101,19 +108,69 @@ const PRIVATE_COLLAB_CONTEXT = [
   `(${'内部' + '工作流'}|${'内部' + '协作记录'}|${'私人' + '偏好'}|internal\\s+instructions?|private\\s+instructions?)\\s*(?:for|to|given\\s+to)?\\s*${AI_TOOL_ALT.source}`,
 ]
 
+/**
+ * AUTHORSHIP NARRATIVE — "who produced this work".
+ *
+ * Distinct from a bare tool name and from a private artefact. What is matched is
+ * the sentence that attributes the DELIVERABLE to an assistant: a work object
+ * (this project, the code, the docs) bound to a producer, or an author bound to
+ * a collaborator, or a claim about how much of the output was machine-produced.
+ *
+ * Deliberately NOT matched:
+ *   - a tool or model named on its own ("compatible backends include …");
+ *   - the product using a model ("AI 生成的内容仅供参考", "AI 参与评阅");
+ *   - an integration description ("OpenAI-compatible /chat/completions").
+ * Those are product technical information and must stay publishable, so each
+ * pattern below requires an explicit authorship frame — a subject that owns the
+ * deliverable plus a production verb, not merely two words on the same line.
+ */
+const AI_AGENT = `(?:AI|LLM|${'大模型'}|${'人工智能'}|${AI_TOOL_ALT.source})`
+/**
+ * The thing that was produced. Any part of a deliverable counts, not only the
+ * whole repository: a module, a feature, a page, a component, a chapter or a
+ * section is just as much "the work" when a sentence attributes it to an
+ * assistant, and real disclosures name the part rather than the project.
+ *
+ * An optional demonstrative prefix is part of the same token — 「本模块」
+ * 「这个功能」「该页面」「此部分」— because that is how the sentence actually
+ * reads. Bare nouns stay in the list so 「模块由 … 完成」 is caught too.
+ *
+ * Scope note: these are DELIVERABLE nouns only. Words that name what the
+ * product does (模型、能力、接口、API、数据) are deliberately absent — a sentence
+ * like 「产品使用 Claude 模型」 is product information, not authorship, and the
+ * patterns below also require a producer particle (由 / by), so it never fires.
+ */
+const WORK_NOUN = `(?:项目|模块|功能|页面|组件|章节|部分|仓库|代码库|代码|源码|文档|文件)`
+const WORK_OBJECT = `(?:(?:本|这|那|该|此)(?:个|一)?${WORK_NOUN}|${WORK_NOUN}|(?:this|the)\\s+(?:project|module|feature|page|component|section|part|repo|repository|code(?:base)?|docs?))`
+const PRODUCE = `(?:生成|编写|撰写|完成|实现|开发|产出|written|developed|implemented|generated|produced|authored|built)`
+const ROLE = `(?:作者|开发者|维护者|投稿人|author|maintainer)`
+
+const AUTHORSHIP_NARRATIVE = [
+  // a work object given a producer through 由 / by
+  `${WORK_OBJECT}[^。；;\\n]{0,20}?(?:由|by)\\s*${AI_AGENT}[^。；;\\n]{0,12}?${PRODUCE}`,
+  // the same sentence in English word order ("written by …")
+  `${WORK_OBJECT}[^.;\\n]{0,40}?${PRODUCE}\\s+by\\s+${AI_AGENT}`,
+  // an author paired with a collaborator
+  `${ROLE}[^。；;\\n]{0,12}?(?:与|和|跟|同|让|请|with)[^。；;\\n]{0,6}?${AI_AGENT}[^。；;\\n]{0,12}?(?:协作|分工|共同|生成|编写|完成|collaborat)`,
+  // an assistant said to take part in the development work
+  `${AI_AGENT}[^。；;\\n]{0,8}?(?:参与|介入)[^。；;\\n]{0,8}?(?:开发|编写|撰写|实现|编码)`,
+  // a share of the output attributed to an assistant
+  `${AI_AGENT}[^。；;\\n]{0,8}?(?:生成|编写|产出)[^。；;\\n]{0,4}?(?:占比|比例|率)`,
+]
+
 // ---------------------------------------------------------------------------
 // De-obfuscation
 //
 // A text matcher that reads raw source is trivially defeated by writing the
 // value in a form the matcher cannot see: `\uXXXX` escapes, character-code
-// concatenation, or `'a' + 'b'` splitting. That is not a hypothetical — a real
-// private document name was once committed to this repository inside a test
-// fixture precisely because splitting the literal kept the gate quiet.
+// concatenation, or `'a' + 'b'` splitting. Splitting a literal is the obvious
+// way to keep a document name, a path or a credential below the threshold of a
+// line-oriented scanner, so it has to be defeated explicitly.
 //
-// Every line is therefore scanned twice: as written, and in a normalised form
-// with escapes decoded and adjacent string literals joined. Rules see both.
-// A third pass reports the obfuscation itself (see `obfuscated-literal`), so a
-// value can be hidden from the matcher but not from the maintainer.
+// Every line is therefore scanned in two normalised forms as well as the raw
+// one: escapes decoded, and adjacent string literals joined. Rules see all
+// three. One narrow rule reports the shape that has no legitimate use here —
+// escaped text split across concatenation.
 // ---------------------------------------------------------------------------
 
 /** Decode `\uXXXX`, `\u{...}` and `\xXX` escapes so encoded values are visible. */
@@ -180,15 +237,20 @@ function capturedSegment(re, line) {
  *   allow: predicate (file, line) => true to suppress a legitimate match
  */
 export const RULES = [
-  // ---- INTERNAL: private development tooling -----------------------------
+  // ---- INTERNAL: private identity ----------------------------------------
   {
-    id: 'private-tool-name',
+    id: 'private-developer-identity',
     severity: 'INTERNAL',
-    // Assembled from fragments so this file does not match its own rule. Neither
-    // name has a product meaning here; both identify the private development
-    // environment this project was built in.
-    re: new RegExp(['Ha' + 'rk', 'Work' + 'Buddy'].join('|')),
-    desc: 'private development tool name',
+    // The maintainer's private local handle — the author name used by the
+    // internal repository, not the published one. The legal copyright holder in
+    // LICENSE is a different name and is not matched by this rule, so the
+    // required attribution stays intact.
+    //
+    // Word-bounded and case-sensitive, so ordinary words that merely contain the
+    // letters (`shark`) never match. Fragment-assembled so this file does not
+    // trip its own rule.
+    re: new RegExp(`\\b${FRAG.developerHandles[0]}\\b`),
+    desc: 'private developer identity (not a published author name)',
   },
 
   {
@@ -336,17 +398,16 @@ export const RULES = [
 
   // ---- INTERNAL: obfuscated content --------------------------------------
   //
-  // NOTE ON SCOPE. An earlier version of this rule blocked any literal holding
-  // several `\uXXXX` escapes. That was too broad: legitimate i18n tables, tests
-  // that assert on escapes, and escaped CJK punctuation all tripped it. Detecting
-  // "looks encoded" is the wrong goal — an escape is only a problem when the
-  // DECODED text is something that must not be published.
+  // NOTE ON SCOPE. Detecting "looks encoded" is the wrong goal: an escape is only
+  // a problem when the DECODED text is something that must not be published.
+  // Blocking every literal that holds several `\uXXXX` escapes would also break
+  // legitimate i18n tables, tests that assert on escapes, and escaped CJK
+  // punctuation.
   //
   // The decode pass already runs for every line, so a hidden document name or
-  // path is now caught by the ordinary rules once decoded. What remains here is
-  // the narrow signal that cannot be expressed any other way: escaped text joined
-  // across string concatenation, which is the exact shape the historical leak
-  // used. A plain escaped literal is left alone.
+  // path is caught by the ordinary rules once decoded. What remains here is the
+  // narrow signal that cannot be expressed any other way: escaped text joined
+  // across string concatenation. A plain escaped literal is left alone.
   {
     id: 'obfuscated-cjk-literal',
     severity: 'INTERNAL',
@@ -354,28 +415,24 @@ export const RULES = [
     desc: 'escaped text split across literals — decode before committing',
   },
 
-  // ---- INTERNAL: development tooling and process -------------------------
+  // ---- INTERNAL: private process -----------------------------------------
   {
     // A tool NAME is public. This rule fires only when a name is bound to a
-    // private artefact — a transcript, personal prompts, internal instructions.
-    // See the block comment on `PRIVATE_COLLAB_CONTEXT` for why the previous
-    // "any tool name is INTERNAL" rule was removed.
+    // private artefact — a transcript, a personal instruction set, an internal
+    // process note. See the block comment on `PRIVATE_COLLAB_CONTEXT`.
     id: 'private-collaboration-record',
     severity: 'INTERNAL',
     re: new RegExp(`(?:${PRIVATE_COLLAB_CONTEXT.join('|')})`, 'i'),
     desc: 'private collaboration record (transcript / internal instructions)',
   },
   {
-    // Kept as a REVIEW-level signal, not a block: naming an AI assistant as a
-    // contributor is a normal, honest engineering statement. It is surfaced only
-    // so a reviewer can confirm the wording is accurate, never to suppress it.
-    id: 'ai-attribution-note',
-    severity: 'REVIEW',
-    re: new RegExp(
-      `(?:assisted|generated|written|built|developed|authored|created)\\s+by\\s+(?:${AI_TOOL_ALT.source})|(?:${AI_TOOL_ALT.source})\\s+(?:assisted|helped)`,
-      'i',
-    ),
-    desc: 'AI attribution — confirm the statement is accurate (not a violation)',
+    // Says who produced the work. The private process behind a delivery is not
+    // part of that delivery; a bare tool name is still public. See the block
+    // comment on `AUTHORSHIP_NARRATIVE` for what is deliberately not matched.
+    id: 'collaboration-authorship-narrative',
+    severity: 'INTERNAL',
+    re: new RegExp(`(?:${AUTHORSHIP_NARRATIVE.join('|')})`, 'i'),
+    desc: 'authorship narrative attributing the deliverable to an assistant',
   },
   {
     id: 'process-disclosure',
@@ -467,17 +524,21 @@ export const FORBIDDEN_PATHS = [
  * silence credentials; a regression test asserts SECRET rules still fire inside
  * allowlisted files.
  *
- * This file needs the vocabulary exemptions: it has to spell out the rule ids and
- * name the tool vocabulary it detects, otherwise the rule table cannot exist. The
- * exemption covers only those two rule ids, never SECRET rules, and the regression
- * test above keeps that promise honest.
+ * SCOPE: exactly one file. This table has to spell out the rule ids and name the
+ * vocabulary it detects, otherwise the rule table cannot exist. The exemption
+ * covers only the three vocabulary rule ids below, never SECRET rules, and the
+ * regression test above keeps that promise honest.
+ *
+ * `docs/information-governance.md` is NOT listed. A whole-file exemption for a
+ * prose document is unbounded: any future paragraph could hide inside it. The
+ * document is instead written so that it never needs the exemption, and the
+ * tests assert that a private-record line added to that path still blocks.
  */
 export const FILE_ALLOW = [
   {
     file: /^tools\/public-info-check\.mjs$/,
-    rules: ['private-collaboration-record', 'process-disclosure', 'private-tool-name'],
+    rules: ['private-collaboration-record', 'private-developer-identity', 'process-disclosure'],
   },
-  { file: /^docs\/information-governance\.md$/, rules: ['process-disclosure', 'validation-claim'] },
 ]
 
 /**
@@ -698,8 +759,8 @@ function commitMessages(revs) {
  *   - raw              what the file literally contains;
  *   - decoded          `\uXXXX` / `\xXX` escapes resolved;
  *   - flattened        adjacent string literals joined (`'a' + 'b'` -> `'ab'`).
- * The decoded and flattened forms exist because a real private document name
- * was previously committed in exactly that shape.
+ * A value split across concatenation, or written as escapes, is therefore seen
+ * as the single token it represents.
  */
 export function scanText(text, where, fileForAllow = '', opts = {}) {
   const findings = []
