@@ -16,7 +16,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
@@ -839,18 +839,20 @@ test('gate: "independent source review" wording is flagged as an unsupported cla
 })
 
 // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Boundary fix 11 — AI tool names are PUBLIC; private AI records are not
+// Boundary fix 11 — tool names are PUBLIC; the private process is not
 //
-// An earlier version flagged ANY tool name as INTERNAL. That was wrong twice
-// over: it treated a public product name as a secret, and it penalised the
-// honest statement "assisted by <tool>" — punishing disclosure and rewarding
-// silence, the opposite of what this gate is for.
+// Classification (docs §4 "AI 产品信息与协作过程"):
+//   public    : tool names, provider names, model ids, integration docs
+//   INTERNAL  : transcripts, personal instruction sets, process notes,
+//               authorship statements, private developer identity
 //
-// Classification now:
-//   public / advisory : tool names, provider names, model ids, attributions
-//   INTERNAL          : transcripts, personal prompts, internal instructions
+// The subject of the rule is the DELIVERABLE, not the tool: naming a model is
+// product information, while "who produced this work" is private process.
+// The tests below pin both sides — the product wording that must stay
+// publishable, and the disclosure that must not.
 // ---------------------------------------------------------------------------
+
+const ASSISTANT_WORD = 'AI'
 
 test('gate: a provider model id is NOT flagged (AI provider names are public)', () => {
   const d = repo()
@@ -860,15 +862,89 @@ test('gate: a provider model id is NOT flagged (AI provider names are public)', 
   assert.equal(code, 0, `model ids must not be treated as secrets:\n${out}`)
 })
 
-test('gate: an honest AI-attribution sentence does NOT block the build', () => {
+test('gate: an authorship statement naming an assistant IS blocked', () => {
   const d = repo()
   const tool = 'Clau' + 'de'
-  writeFileSync(path.join(d, 'NOTES.md'), `- this module was assisted by ${tool} Code\n`)
+  writeFileSync(path.join(d, 'NOTES.md'), `- 本项目由 ${tool} 编写\n`)
   gitIn(d, ['add', '-A'])
   const { code, out } = runGateRaw(d, ['--index', '--no-metadata'])
-  assert.equal(code, 0, `stating how the work was done must not be blocked:\n${out}`)
-  // Still surfaced as advice, so a reviewer can confirm the claim is accurate.
-  assert.match(out, /ai-attribution-note/, 'the attribution is surfaced, not hidden')
+  assert.equal(code, 1, 'the private process behind the deliverable is not a public delivery')
+  assert.match(out, /collaboration-authorship-narrative/)
+})
+
+test('gate: the same authorship statement is blocked in English word order', () => {
+  const d = repo()
+  const tool = 'Clau' + 'de'
+  writeFileSync(path.join(d, 'NOTES.md'), `This project was written by ${tool}.\n`)
+  gitIn(d, ['add', '-A'])
+  const { code, out } = runGateRaw(d, ['--index', '--no-metadata'])
+  assert.equal(code, 1, 'word order does not change what the sentence says')
+  assert.match(out, /collaboration-authorship-narrative/)
+})
+
+test('gate: an author paired with an assistant IS blocked', () => {
+  const d = repo()
+  const tool = 'Gem' + 'ini'
+  writeFileSync(path.join(d, 'NOTES.md'), `- 作者与 ${tool} 协作完成初版\n`)
+  gitIn(d, ['add', '-A'])
+  const { code, out } = runGateRaw(d, ['--index', '--no-metadata'])
+  assert.equal(code, 1, 'who worked with whom is part of the private process')
+  assert.match(out, /collaboration-authorship-narrative/)
+})
+
+test('gate: a share-of-output claim IS blocked', () => {
+  const d = repo()
+  // Assembled at runtime: this fixture must not carry the literal it tests.
+  const claim = [ASSISTANT_WORD, '生成占比约 60%'].join(' ')
+  writeFileSync(path.join(d, 'NOTES.md'), `- ${claim}\n`)
+  gitIn(d, ['add', '-A'])
+  const { code, out } = runGateRaw(d, ['--index', '--no-metadata'])
+  assert.equal(code, 1, 'a ratio of machine-produced output is a process disclosure')
+  assert.match(out, /collaboration-authorship-narrative/)
+})
+
+test('gate: PRODUCT sentences about an assistant do NOT block', () => {
+  const d = repo()
+  // Product behaviour, not a work log: the app generates content and the
+  // assistant answers questions. Both must stay publishable.
+  const lines = [
+    `- ${ASSISTANT_WORD} 生成内容仅供参考，不构成官方答案。`,
+    `- ${ASSISTANT_WORD} 参与评阅时只更新评阅记录，不推进复习间隔。`,
+    `- 兼容的后端包括 ${'Clau' + 'de'} 与 ${'Chat' + 'GPT'}。`,
+  ]
+  writeFileSync(path.join(d, 'README.md'), lines.join('\n') + '\n')
+  gitIn(d, ['add', '-A'])
+  const { code, out } = runGateRaw(d, ['--index', '--no-metadata'])
+  assert.equal(code, 0, `product wording must not be treated as a process disclosure:\n${out}`)
+})
+
+test('gate: a private developer handle IS blocked', () => {
+  const d = repo()
+  const handle = ['Ha', 'rk'].join('')
+  writeFileSync(path.join(d, 'NOTES.md'), `- 维护者：${handle}\n`)
+  gitIn(d, ['add', '-A'])
+  const { code, out } = runGateRaw(d, ['--index', '--no-metadata'])
+  assert.equal(code, 1, 'a private local handle is not a published author name')
+  assert.match(out, /private-developer-identity/)
+})
+
+test('gate: the handle rule does not fire on words that merely contain it', () => {
+  const d = repo()
+  // "shark" ends with the handle; a substring test would block it.
+  writeFileSync(path.join(d, 'NOTES.md'), '- a shark tank, and the HARKing problem in statistics\n')
+  gitIn(d, ['add', '-A'])
+  const { code } = runGateRaw(d, ['--index', '--no-metadata'])
+  assert.equal(code, 0, 'the rule is word-bounded and case-sensitive')
+})
+
+test('gate: the legal copyright holder in LICENSE is NOT blocked', () => {
+  const d = repo()
+  // Required attribution: the exported LICENSE carries the legal name and must
+  // never be caught by an identity rule.
+  writeFileSync(path.join(d, 'LICENSE'), 'MIT License\n\nCopyright (c) 2026 翁成航 (Chenghang Weng)\n')
+  gitIn(d, ['add', '-A'])
+  const { code, out } = runGateRaw(d, ['--index', '--no-metadata'])
+  assert.equal(code, 0, `licence attribution must survive the identity rule:\n${out}`)
 })
 
 test('gate: a bare AI tool name in prose does NOT block', () => {
@@ -1039,6 +1115,50 @@ test('exemption: table entries are exact, rule-scoped and justified', () => {
   // The vocabulary itself must be untouched by this mechanism.
   assert.match(gate, /'提' \+ '示词'/, 'the flagged word is still in the vocabulary')
   assert.match(gate, /'对话' \+ '记录'/, 'the flagged phrase is still in the vocabulary')
+})
+
+// ---------------------------------------------------------------------------
+// Governance document — no whole-file exemption
+//
+// A whole-file exemption for a prose document cannot be bounded: any paragraph
+// added later inherits it silently. The document is therefore written so that it
+// needs none, and these tests prove both halves — the exemption is gone, and the
+// document is clean without it.
+// ---------------------------------------------------------------------------
+
+test('file allowlist: no prose document is whole-file exempt', async () => {
+  const mod = await import(pathToFileURL(SCRIPT).href)
+  for (const entry of mod.FILE_ALLOW) {
+    assert.match(entry.file.source, /\.mjs\$/, `allowlist entry ${entry.file} must target a script, not prose`)
+  }
+  assert.ok(
+    !mod.FILE_ALLOW.some((e) => e.file.test('docs/information-governance.md')),
+    'the governance document must not be whole-file exempt',
+  )
+})
+
+test('gate: a private-record line added to the governance doc IS blocked', () => {
+  const d = repo()
+  mkdirSync(path.join(d, 'docs'), { recursive: true })
+  const tool = 'Clau' + 'de'
+  writeFileSync(path.join(d, 'docs', 'information-governance.md'), `# 规范\n\n- pasted from the ${tool} chat log\n`)
+  gitIn(d, ['add', '-A'])
+  const { code, out } = runGateRaw(d, ['--index', '--no-metadata'])
+  assert.equal(code, 1, 'the document no longer has a file-level exemption')
+  assert.match(out, /private-collaboration-record/)
+})
+
+test('gate: the shipped governance document passes on its own content', () => {
+  const d = repo()
+  mkdirSync(path.join(d, 'docs'), { recursive: true })
+  writeFileSync(
+    path.join(d, 'docs', 'information-governance.md'),
+    readFileSync(path.join(ROOT, 'docs', 'information-governance.md')),
+  )
+  gitIn(d, ['add', '-A'])
+  const { code, out } = runGateRaw(d, ['--index', '--no-metadata'])
+  assert.equal(code, 0, `the document must not need an exemption:\n${out}`)
+  assert.doesNotMatch(out, /information-governance/, 'no finding may reference the document')
 })
 
 test('review rule: a fabricated infrastructure id in deployment code is flagged', () => {
